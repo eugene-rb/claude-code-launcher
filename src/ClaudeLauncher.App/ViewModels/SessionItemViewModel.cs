@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Windows;
 using ClaudeLauncher.App.Models;
 using ClaudeLauncher.App.Services;
@@ -12,6 +13,7 @@ namespace ClaudeLauncher.App.ViewModels;
 public partial class SessionItemViewModel : ObservableObject
 {
     private readonly ProcessLauncherService _launcher;
+    private readonly TranscriptLimitWatcher _limitWatcher = new();
     private Process? _process;
 
     public SessionProfile Profile { get; private set; }
@@ -42,6 +44,12 @@ public partial class SessionItemViewModel : ObservableObject
     [ObservableProperty]
     private string? scheduleSummary;
 
+    [ObservableProperty]
+    private string? limitStatusSummary;
+
+    [ObservableProperty]
+    private string manualLimitTimeText = string.Empty;
+
     public SessionItemViewModel(SessionProfile profile, ProcessLauncherService launcher)
     {
         Profile = profile;
@@ -52,6 +60,7 @@ public partial class SessionItemViewModel : ObservableObject
         arguments = profile.Arguments;
         accentColorHex = profile.AccentColorHex;
         RefreshScheduleSummary();
+        RefreshLimitStatusSummary();
     }
 
     public void ApplyProfile(SessionProfile updated)
@@ -63,6 +72,7 @@ public partial class SessionItemViewModel : ObservableObject
         Arguments = updated.Arguments;
         AccentColorHex = updated.AccentColorHex;
         RefreshScheduleSummary();
+        RefreshLimitStatusSummary();
     }
 
     /// <summary>Called periodically by <see cref="MainViewModel"/>'s schedule timer. Returns true if
@@ -105,6 +115,104 @@ public partial class SessionItemViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>Called periodically by <see cref="MainViewModel"/>'s schedule timer. Polls this
+    /// session's own Claude Code transcript for a newly-appeared usage-limit event; on a match,
+    /// schedules an auto-resume 5 minutes after the parsed reset time. No-op unless the session is
+    /// running and <see cref="SessionProfile.LimitDetectionEnabled"/> is on.</summary>
+    public bool TryDetectUsageLimit()
+    {
+        if (!IsRunning || !Profile.LimitDetectionEnabled)
+        {
+            return false;
+        }
+
+        var resetAt = _limitWatcher.Poll(Profile.WorkingDirectory);
+        if (resetAt is not { } at)
+        {
+            return false;
+        }
+
+        Profile.AutoResumeAt = at + TimeSpan.FromMinutes(5);
+        RefreshLimitStatusSummary();
+        return true;
+    }
+
+    /// <summary>Called periodically by <see cref="MainViewModel"/>'s schedule timer. If an auto-resume
+    /// is due, stops the still-blocked process (if it's still running) and relaunches with `-c`.
+    /// Stopping happens here, at fire time, rather than at detection time, so a window the user might
+    /// still be reading isn't killed the moment the limit message appears. A resume that's gone stale
+    /// (the app was closed for hours past the reset time) is cancelled instead of fired, so reopening
+    /// the app days later doesn't silently relaunch a session the user has moved on from.</summary>
+    public bool TryFireAutoResume(DateTimeOffset now)
+    {
+        if (ScheduleEvaluator.IsAutoResumeStale(Profile, now))
+        {
+            Profile.AutoResumeAt = null;
+            LimitStatusSummary = "自動再開の予定時刻を過ぎたため取り消されました";
+            return true;
+        }
+
+        if (!ScheduleEvaluator.ShouldAutoResume(Profile, now))
+        {
+            return false;
+        }
+
+        if (IsRunning)
+        {
+            Stop();
+        }
+
+        try
+        {
+            Launch(resume: true);
+        }
+        catch (Exception)
+        {
+            // Unattended path: never retry-storm on failure.
+            Profile.AutoResumeAt = null;
+            LimitStatusSummary = "自動再開に失敗しました";
+            return true;
+        }
+
+        Profile.AutoResumeAt = null;
+        RefreshLimitStatusSummary();
+        return true;
+    }
+
+    /// <summary>Manual fallback for when auto-detection doesn't fire (e.g. the reset-time wording
+    /// changes in a future CLI version): the user types the reset time they see on screen (H:mm,
+    /// today or tomorrow if already past) and the app schedules the same 5-minutes-later resume.</summary>
+    [RelayCommand]
+    private void RecordManualLimit()
+    {
+        if (!TimeSpan.TryParseExact(ManualLimitTimeText.Trim(), ["h\\:mm", "hh\\:mm"], CultureInfo.InvariantCulture, out var time))
+        {
+            LimitStatusSummary = "時刻は H:mm 形式(例: 15:30)で入力してください";
+            return;
+        }
+
+        var now = DateTimeOffset.Now;
+        var candidate = new DateTimeOffset(now.Date + time, now.Offset);
+        if (candidate < now)
+        {
+            candidate = candidate.AddDays(1);
+        }
+
+        Profile.AutoResumeAt = candidate + TimeSpan.FromMinutes(5);
+        ManualLimitTimeText = string.Empty;
+        RefreshLimitStatusSummary();
+    }
+
+    /// <summary>Recomputes the usage-limit-detection badge from <see cref="SessionProfile.AutoResumeAt"/>.
+    /// Public so <see cref="MainViewModel"/>'s periodic timer can refresh it even on ticks where
+    /// nothing fired.</summary>
+    public void RefreshLimitStatusSummary()
+    {
+        LimitStatusSummary = Profile.AutoResumeAt is { } at
+            ? $"制限検知 → {at.LocalDateTime:yyyy/MM/dd HH:mm} に自動再開予定 (--continue)"
+            : null;
+    }
+
     /// <summary>Recomputes the human-readable schedule badge. Public so <see cref="MainViewModel"/>'s
     /// periodic timer can refresh it even on ticks where nothing fired — a "Once" schedule whose
     /// grace window has already elapsed (e.g. the app was closed through it) must stop claiming
@@ -123,13 +231,16 @@ public partial class SessionItemViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private void Start()
+    private void Start() => Launch(resume: false);
+
+    private void Launch(bool resume)
     {
-        _process = _launcher.Start(Profile);
+        _process = _launcher.Start(Profile, resume);
         _process.Exited += OnProcessExited;
         ProcessId = _process.Id;
         IsRunning = true;
         Profile.LastLaunchedAt = DateTimeOffset.Now;
+        _limitWatcher.Reset(DateTimeOffset.Now);
     }
 
     private bool CanStart() => !IsRunning;

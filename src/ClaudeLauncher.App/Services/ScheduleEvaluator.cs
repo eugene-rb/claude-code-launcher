@@ -34,4 +34,22 @@ public static class ScheduleEvaluator
 
     private static bool IsDue(TimeSpan elapsedSinceTarget) =>
         elapsedSinceTarget >= TimeSpan.Zero && elapsedSinceTarget <= GraceWindow;
+
+    /// <summary>How long past its target an auto-resume is still considered worth firing. Much wider
+    /// than <see cref="GraceWindow"/> on purpose — a resume that was due while the app was briefly
+    /// closed (e.g. the computer slept overnight) should still fire, unlike a user-authored schedule.
+    /// But without any bound at all, reopening the app days later would silently relaunch a session
+    /// the user has long since moved on from; beyond this window it's treated as stale instead
+    /// (see <see cref="IsAutoResumeStale"/>).</summary>
+    public static readonly TimeSpan AutoResumeStaleWindow = TimeSpan.FromHours(6);
+
+    /// <summary>Unlike <see cref="ShouldFire"/>, running state isn't considered here — the caller
+    /// stops the still-blocked process itself right before relaunching.</summary>
+    public static bool ShouldAutoResume(SessionProfile profile, DateTimeOffset now) =>
+        profile.AutoResumeAt is { } at && now >= at && now - at <= AutoResumeStaleWindow;
+
+    /// <summary>True once an auto-resume is far enough past due that it should be cancelled instead
+    /// of fired (see <see cref="AutoResumeStaleWindow"/>).</summary>
+    public static bool IsAutoResumeStale(SessionProfile profile, DateTimeOffset now) =>
+        profile.AutoResumeAt is { } at && now - at > AutoResumeStaleWindow;
 }

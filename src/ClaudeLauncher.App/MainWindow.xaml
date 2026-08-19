@@ -20,6 +20,7 @@
         <conv:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
         <conv:HexToBrushConverter x:Key="HexToBrushConverter" />
         <conv:NotNullToVisibilityConverter x:Key="NotNullToVisibilityConverter" />
+        <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     </ui:FluentWindow.Resources>
 
     <Grid>
@@ -44,8 +45,12 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="セッション" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        <ui:Button Grid.Column="1" Content="新規セッション" Appearance="Primary"
-                                   Icon="{ui:SymbolIcon Symbol=Add24}" Click="AddSession_Click" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <ui:Button Content="既存プロジェクトから追加" Appearance="Secondary" Margin="0,0,8,0"
+                                       Icon="{ui:SymbolIcon Symbol=FolderArrowRight24}" Click="ImportProjects_Click" />
+                            <ui:Button Content="新規セッション" Appearance="Primary"
+                                       Icon="{ui:SymbolIcon Symbol=Add24}" Click="AddSession_Click" />
+                        </StackPanel>
                     </Grid>
 
                     <Grid Grid.Row="1">
@@ -91,6 +96,15 @@
                                                     </StackPanel>
                                                     <TextBlock Text="{Binding ScheduleSummary}" Opacity="0.55" FontSize="11" Margin="0,4,0,0"
                                                                Visibility="{Binding ScheduleSummary, Converter={StaticResource NotNullToVisibilityConverter}}" />
+                                                    <TextBlock Text="{Binding LimitStatusSummary}" Opacity="0.55" FontSize="11" Margin="0,4,0,0"
+                                                               Visibility="{Binding LimitStatusSummary, Converter={StaticResource NotNullToVisibilityConverter}}" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                                                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                        <TextBox Text="{Binding ManualLimitTimeText, UpdateSourceTrigger=PropertyChanged}"
+                                                                 Width="70" ToolTip="表示された制限リセット時刻を H:mm で入力" />
+                                                        <ui:Button Content="制限を記録" Margin="6,0,0,0" FontSize="11"
+                                                                   Command="{Binding RecordManualLimitCommand}" />
+                                                    </StackPanel>
                                                 </StackPanel>
 
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">

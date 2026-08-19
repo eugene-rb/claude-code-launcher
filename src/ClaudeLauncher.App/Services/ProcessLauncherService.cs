@@ -38,11 +38,50 @@ public sealed class ProcessLauncherService
 
     private static string ToPowerShellLiteral(string value) => "'" + value.Replace("'", "''") + "'";
 
-    /// <summary>Starts the session's PowerShell window. The caller owns the returned process (keep a
-    /// reference alive and subscribe to <see cref="Process.Exited"/> as needed).</summary>
-    public Process Start(SessionProfile profile)
+    /// <summary>Tokenizes the profile's configured arguments and, when resuming, appends `-c` to
+    /// continue the most recent conversation in the working directory (no session ID needed, unlike
+    /// `-r/--resume` which opens an interactive picker when given no value and would hang unattended).
+    /// Any existing `-r`/`--resume`/`-c`/`--continue` already in the profile's own arguments (e.g. a
+    /// user-configured `--resume`) is stripped first so the two can't collide on the same command
+    /// line - a bare trailing `--resume` with no session ID would otherwise still open that picker
+    /// and hang the unattended resume.</summary>
+    public static IReadOnlyList<string> BuildLaunchArguments(string profileArguments, bool resume)
     {
-        var arguments = CommandLineTokenizer.Tokenize(profile.Arguments);
+        var arguments = CommandLineTokenizer.Tokenize(profileArguments);
+        if (!resume)
+        {
+            return arguments;
+        }
+
+        var filtered = new List<string>();
+        for (var i = 0; i < arguments.Count; i++)
+        {
+            var token = arguments[i];
+            if (token is "-r" or "--resume" or "-c" or "--continue")
+            {
+                // -r/--resume optionally takes a session-ID value; drop it too so it isn't left
+                // behind as a stray positional prompt argument.
+                if (token is "-r" or "--resume" && i + 1 < arguments.Count && !arguments[i + 1].StartsWith('-'))
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            filtered.Add(token);
+        }
+
+        filtered.Add("-c");
+        return filtered;
+    }
+
+    /// <summary>Starts the session's PowerShell window. The caller owns the returned process (keep a
+    /// reference alive and subscribe to <see cref="Process.Exited"/> as needed). Pass
+    /// <paramref name="resume"/> to continue the most recent conversation instead of a fresh one.</summary>
+    public Process Start(SessionProfile profile, bool resume = false)
+    {
+        var arguments = BuildLaunchArguments(profile.Arguments, resume);
         var script = BuildScript(profile.Name, profile.Executable, arguments);
         var encoded = EncodeCommand(script);
 
@@ -62,13 +101,16 @@ public sealed class ProcessLauncherService
         return process;
     }
 
-    /// <summary>Kills the session's process tree. Returns false (without throwing) if the process had
-    /// already exited on its own before this call.</summary>
+    /// <summary>Kills the session's process tree and waits (bounded) for it to actually exit before
+    /// returning, so callers that immediately relaunch (e.g. an auto-resume's `-c`) don't race a
+    /// still-terminating process for the working directory's files. Returns false (without throwing)
+    /// if the process had already exited on its own before this call.</summary>
     public bool Stop(Process process)
     {
         try
         {
             process.Kill(entireProcessTree: true);
+            process.WaitForExit(3000);
             return true;
         }
         catch (InvalidOperationException)

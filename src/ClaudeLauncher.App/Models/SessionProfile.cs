@@ -26,6 +26,14 @@ public sealed class SessionProfile
 
     public TimeSpan? DailyTime { get; set; }
 
+    /// <summary>When true, a running session's transcript is polled for a usage-limit ("rate_limit")
+    /// event; on detection <see cref="AutoResumeAt"/> is set to the parsed reset time + 5 minutes.</summary>
+    public bool LimitDetectionEnabled { get; set; }
+
+    /// <summary>Set by auto-detection or the manual override once a resume time is known; cleared
+    /// after the resume launch fires (see <c>ScheduleEvaluator.ShouldAutoResume</c>).</summary>
+    public DateTimeOffset? AutoResumeAt { get; set; }
+
     public SessionProfile Clone() => new()
     {
         Id = Id,
@@ -40,5 +48,7 @@ public sealed class SessionProfile
         Repeat = Repeat,
         ScheduledAt = ScheduledAt,
         DailyTime = DailyTime,
+        LimitDetectionEnabled = LimitDetectionEnabled,
+        AutoResumeAt = AutoResumeAt,
     };
 }

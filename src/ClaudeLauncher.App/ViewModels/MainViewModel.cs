@@ -50,6 +50,20 @@ public partial class MainViewModel : ObservableObject
 
         foreach (var session in Sessions)
         {
+            if (session.TryDetectUsageLimit())
+            {
+                anyFired = true;
+            }
+
+            if (session.TryFireAutoResume(now))
+            {
+                anyFired = true;
+            }
+            else
+            {
+                session.RefreshLimitStatusSummary();
+            }
+
             if (session.TryFireScheduledLaunch(now))
             {
                 anyFired = true;

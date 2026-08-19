@@ -32,6 +32,64 @@ public class ProcessLauncherServiceTests
     }
 
     [Fact]
+    public void BuildLaunchArguments_NotResuming_ReturnsTokenizedArgumentsUnchanged()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments("--model sonnet", resume: false);
+
+        Assert.Equal(["--model", "sonnet"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_Resuming_AppendsContinueFlag()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments("--model sonnet", resume: true);
+
+        Assert.Equal(["--model", "sonnet", "-c"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_Resuming_WithNoOtherArguments_IsJustContinueFlag()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments("", resume: true);
+
+        Assert.Equal(["-c"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_Resuming_StripsExistingBareResumeFlag()
+    {
+        // A bare trailing --resume (no session ID) opens an interactive picker and would hang an
+        // unattended auto-resume launch, so it must not survive alongside the appended -c.
+        var arguments = ProcessLauncherService.BuildLaunchArguments("--resume --model sonnet", resume: true);
+
+        Assert.Equal(["--model", "sonnet", "-c"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_Resuming_StripsExistingResumeFlagWithSessionIdValue()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments("-r abc123 --model sonnet", resume: true);
+
+        Assert.Equal(["--model", "sonnet", "-c"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_Resuming_DoesNotDuplicateExistingContinueFlag()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments("-c --model sonnet", resume: true);
+
+        Assert.Equal(["--model", "sonnet", "-c"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_Resuming_TrailingResumeWithNoValue_IsRemovedCleanly()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments("--model sonnet --resume", resume: true);
+
+        Assert.Equal(["--model", "sonnet", "-c"], arguments);
+    }
+
+    [Fact]
     public void EncodeCommand_RoundTrips_AsUtf16LeBase64()
     {
         const string script = "Write-Host 'こんにちは'";

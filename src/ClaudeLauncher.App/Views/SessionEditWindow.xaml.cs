@@ -43,6 +43,8 @@ public partial class SessionEditWindow : FluentWindow
         ExecutableTextBox.Text = string.IsNullOrWhiteSpace(profile.Executable) ? "claude" : profile.Executable;
         ArgumentsTextBox.Text = profile.Arguments;
 
+        LimitDetectionEnabledCheckBox.IsChecked = profile.LimitDetectionEnabled;
+
         BuildAccentSwatches();
         InitializeScheduleControls(profile);
     }
@@ -224,6 +226,13 @@ public partial class SessionEditWindow : FluentWindow
         _profile.Repeat = repeat;
         _profile.ScheduledAt = scheduledAt;
         _profile.DailyTime = dailyTime;
+        _profile.LimitDetectionEnabled = LimitDetectionEnabledCheckBox.IsChecked == true;
+        if (!_profile.LimitDetectionEnabled)
+        {
+            // Otherwise a pending auto-resume (from detection or a manual record) would still fire
+            // later even though the user just explicitly turned the feature off.
+            _profile.AutoResumeAt = null;
+        }
 
         DialogResult = true;
     }

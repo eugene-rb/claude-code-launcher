@@ -70,6 +70,10 @@
                 <TextBlock Text="※ このアプリを起動している間のみ有効です" FontSize="11" Opacity="0.45" />
             </StackPanel>
 
+            <CheckBox x:Name="LimitDetectionEnabledCheckBox"
+                      Content="利用上限を検知したら5分後に --continue で自動再開する" Margin="0,0,0,4" />
+            <TextBlock Text="※ このアプリを起動している間のみ有効です。会話の続きから再開されます" FontSize="11" Opacity="0.45" Margin="0,0,0,16" />
+
             <TextBlock x:Name="ValidationTextBlock" Foreground="#D13438" TextWrapping="Wrap"
                        Margin="0,0,0,12" Visibility="Collapsed" />
         </StackPanel>
