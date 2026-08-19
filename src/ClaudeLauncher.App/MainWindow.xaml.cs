@@ -67,4 +67,17 @@ public partial class MainWindow : FluentWindow
             ViewModel.RemoveSession(item);
         }
     }
+
+    private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Selector.SelectionChanged bubbles - a ComboBox/ListBox selection changing inside a tab's
+        // content would also reach this handler. Only react when the TabControl itself is the
+        // element whose selection changed.
+        if (e.OriginalSource is not TabControl || !ExtensionsTabItem.IsSelected)
+        {
+            return;
+        }
+
+        ViewModel.Extensions.EnsureLoaded();
+    }
 }

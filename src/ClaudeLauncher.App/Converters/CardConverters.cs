@@ -49,6 +49,24 @@ public sealed class HexToBrushConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>Inverts a bool - handy for binding IsEnabled to the negation of an IsBusy flag.</summary>
+public sealed class InverseBoolConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
+}
+
+/// <summary>True (currently enabled) -> "無効化" (the action the button performs); false -> "有効化".</summary>
+public sealed class EnabledToToggleLabelConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? "無効化" : "有効化";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>Visible when the bound value is a non-null, non-empty string.</summary>
 public sealed class NotNullToVisibilityConverter : IValueConverter
 {

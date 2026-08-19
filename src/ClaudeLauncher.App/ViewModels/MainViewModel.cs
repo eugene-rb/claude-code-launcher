@@ -19,6 +19,8 @@ public partial class MainViewModel : ObservableObject
 
     public ConfigFilesViewModel ConfigFiles { get; }
 
+    public ExtensionsViewModel Extensions { get; } = new();
+
     public MainViewModel()
         : this(new SessionProfileStore(), new ProcessLauncherService())
     {

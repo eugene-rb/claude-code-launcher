@@ -30,7 +30,7 @@
 
         <ui:TitleBar Grid.Row="0" Title="Claude Code ランチャー" />
 
-        <TabControl Grid.Row="1" Margin="24,4,24,24">
+        <TabControl Grid.Row="1" Margin="24,4,24,24" SelectionChanged="MainTabControl_SelectionChanged">
             <TabItem Header="セッション">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -115,6 +115,10 @@
 
             <TabItem Header="設定ファイル">
                 <views:ConfigFilesTab DataContext="{Binding ConfigFiles}" />
+            </TabItem>
+
+            <TabItem x:Name="ExtensionsTabItem" Header="拡張機能">
+                <views:ExtensionsTab DataContext="{Binding Extensions}" />
             </TabItem>
         </TabControl>
     </Grid>
