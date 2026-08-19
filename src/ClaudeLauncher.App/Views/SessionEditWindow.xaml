@@ -5,7 +5,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="セッション設定" Height="560" Width="520" MinWidth="480" MinHeight="520"
+        Title="セッション設定" Height="700" Width="520" MinWidth="480" MinHeight="520"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ExtendsContentIntoTitleBar="True"
@@ -16,11 +16,13 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <ui:TitleBar Grid.Row="0" Title="セッション設定" />
 
-        <StackPanel Grid.Row="1" Margin="24">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,24,24,0">
             <TextBlock Text="名前" FontSize="12" Opacity="0.7" Margin="0,0,0,4" />
             <TextBox x:Name="NameTextBox" Margin="0,0,0,16" />
 
@@ -44,13 +46,38 @@
             <TextBlock Text="アクセントカラー" FontSize="12" Opacity="0.7" Margin="0,0,0,8" />
             <StackPanel x:Name="AccentColorPanel" Orientation="Horizontal" Margin="0,0,0,16" />
 
+            <CheckBox x:Name="ScheduleEnabledCheckBox" Content="指定した時刻に自動で起動する" Margin="0,0,0,8"
+                      Checked="ScheduleOption_Changed" Unchecked="ScheduleOption_Changed" />
+            <StackPanel x:Name="SchedulePanel" Margin="20,0,0,16">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <RadioButton x:Name="ScheduleOnceRadio" Content="1回限り" GroupName="ScheduleRepeat" Margin="0,0,16,0"
+                                 IsChecked="True" Checked="ScheduleOption_Changed" />
+                    <RadioButton x:Name="ScheduleDailyRadio" Content="毎日" GroupName="ScheduleRepeat"
+                                 Checked="ScheduleOption_Changed" />
+                </StackPanel>
+
+                <StackPanel x:Name="ScheduleOncePanel" Orientation="Horizontal" Margin="0,0,0,8">
+                    <DatePicker x:Name="ScheduleDatePicker" Width="150" Margin="0,0,8,0" />
+                    <TextBox x:Name="ScheduleOnceTimeTextBox" Width="80" Text="09:00" />
+                </StackPanel>
+
+                <StackPanel x:Name="ScheduleDailyPanel" Orientation="Horizontal" Margin="0,0,0,8" Visibility="Collapsed">
+                    <TextBlock Text="時刻" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox x:Name="ScheduleDailyTimeTextBox" Width="80" Text="09:00" />
+                </StackPanel>
+
+                <TextBlock Text="時刻は H:mm 形式(例: 9:00)で入力してください" FontSize="11" Opacity="0.45" Margin="0,0,0,4" />
+                <TextBlock Text="※ このアプリを起動している間のみ有効です" FontSize="11" Opacity="0.45" />
+            </StackPanel>
+
             <TextBlock x:Name="ValidationTextBlock" Foreground="#D13438" TextWrapping="Wrap"
                        Margin="0,0,0,12" Visibility="Collapsed" />
+        </StackPanel>
+        </ScrollViewer>
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                <ui:Button Content="キャンセル" Appearance="Secondary" Margin="0,0,8,0" IsCancel="True" />
-                <ui:Button Content="保存" Appearance="Primary" IsDefault="True" Click="Save_Click" />
-            </StackPanel>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="24,8,24,24">
+            <ui:Button Content="キャンセル" Appearance="Secondary" Margin="0,0,8,0" IsCancel="True" />
+            <ui:Button Content="保存" Appearance="Primary" IsDefault="True" Click="Save_Click" />
         </StackPanel>
     </Grid>
 </ui:FluentWindow>

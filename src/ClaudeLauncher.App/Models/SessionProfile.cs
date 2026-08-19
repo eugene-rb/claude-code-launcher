@@ -18,6 +18,14 @@ public sealed class SessionProfile
 
     public DateTimeOffset? LastLaunchedAt { get; set; }
 
+    public bool ScheduleEnabled { get; set; }
+
+    public ScheduleRepeat Repeat { get; set; } = ScheduleRepeat.Once;
+
+    public DateTimeOffset? ScheduledAt { get; set; }
+
+    public TimeSpan? DailyTime { get; set; }
+
     public SessionProfile Clone() => new()
     {
         Id = Id,
@@ -28,5 +36,9 @@ public sealed class SessionProfile
         AccentColorHex = AccentColorHex,
         CreatedAt = CreatedAt,
         LastLaunchedAt = LastLaunchedAt,
+        ScheduleEnabled = ScheduleEnabled,
+        Repeat = Repeat,
+        ScheduledAt = ScheduledAt,
+        DailyTime = DailyTime,
     };
 }

@@ -4,6 +4,7 @@
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:vm="clr-namespace:ClaudeLauncher.App.ViewModels"
         xmlns:conv="clr-namespace:ClaudeLauncher.App.Converters"
+        xmlns:views="clr-namespace:ClaudeLauncher.App.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
@@ -18,86 +19,103 @@
         <conv:BoolToStatusTextConverter x:Key="StatusTextConverter" />
         <conv:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
         <conv:HexToBrushConverter x:Key="HexToBrushConverter" />
+        <conv:NotNullToVisibilityConverter x:Key="NotNullToVisibilityConverter" />
     </ui:FluentWindow.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <ui:TitleBar Grid.Row="0" Title="Claude Code ランチャー" />
 
-        <Grid Grid.Row="1" Margin="24,4,24,8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="セッション" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <ui:Button Grid.Column="1" Content="新規セッション" Appearance="Primary"
-                       Icon="{ui:SymbolIcon Symbol=Add24}" Click="AddSession_Click" />
-        </Grid>
+        <TabControl Grid.Row="1" Margin="24,4,24,24">
+            <TabItem Header="セッション">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-        <Grid Grid.Row="2" Margin="24,0,24,24">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
-                        Visibility="{Binding Sessions.Count, Converter={StaticResource CountToVisibilityConverter}}">
-                <TextBlock Text="セッションがまだありません" FontSize="16" Opacity="0.7" HorizontalAlignment="Center" />
-                <TextBlock Text="起動ディレクトリとオプションを設定して、最初のセッションを作成しましょう" FontSize="12" Opacity="0.5"
-                           HorizontalAlignment="Center" Margin="0,4,0,16" />
-                <ui:Button Content="最初のセッションを作成" Appearance="Primary" Icon="{ui:SymbolIcon Symbol=Add24}"
-                           HorizontalAlignment="Center" Click="AddSession_Click" />
-            </StackPanel>
+                    <Grid Grid.Row="0" Margin="0,12,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="セッション" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <ui:Button Grid.Column="1" Content="新規セッション" Appearance="Primary"
+                                   Icon="{ui:SymbolIcon Symbol=Add24}" Click="AddSession_Click" />
+                    </Grid>
 
-            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                          Visibility="{Binding Sessions.Count, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=Invert}">
-                <ItemsControl ItemsSource="{Binding Sessions}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:SessionItemViewModel}">
-                            <ui:Card Margin="0,0,0,12">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="6" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                    <Grid Grid.Row="1">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Visibility="{Binding Sessions.Count, Converter={StaticResource CountToVisibilityConverter}}">
+                            <TextBlock Text="セッションがまだありません" FontSize="16" Opacity="0.7" HorizontalAlignment="Center" />
+                            <TextBlock Text="起動ディレクトリとオプションを設定して、最初のセッションを作成しましょう" FontSize="12" Opacity="0.5"
+                                       HorizontalAlignment="Center" Margin="0,4,0,16" />
+                            <ui:Button Content="最初のセッションを作成" Appearance="Primary" Icon="{ui:SymbolIcon Symbol=Add24}"
+                                       HorizontalAlignment="Center" Click="AddSession_Click" />
+                        </StackPanel>
 
-                                    <Border Grid.Column="0" CornerRadius="3" Margin="0,2,16,2"
-                                            Background="{Binding AccentColorHex, Converter={StaticResource HexToBrushConverter}}" />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      Visibility="{Binding Sessions.Count, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=Invert}">
+                            <ItemsControl ItemsSource="{Binding Sessions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:SessionItemViewModel}">
+                                        <ui:Card Margin="0,0,0,12">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="6" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
 
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding WorkingDirectory}" Opacity="0.7" FontSize="12"
-                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding WorkingDirectory}" Margin="0,2,0,0" />
-                                        <TextBlock Opacity="0.55" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
-                                            <Run Text="{Binding Executable, Mode=OneWay}" />
-                                            <Run Text=" " />
-                                            <Run Text="{Binding Arguments, Mode=OneWay}" />
-                                        </TextBlock>
-                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                                                     Fill="{Binding IsRunning, Converter={StaticResource StatusBrushConverter}}" />
-                                            <TextBlock Text="{Binding IsRunning, Converter={StaticResource StatusTextConverter}}"
-                                                       Margin="6,0,0,0" FontSize="12" />
-                                        </StackPanel>
-                                    </StackPanel>
+                                                <Border Grid.Column="0" CornerRadius="3" Margin="0,2,16,2"
+                                                        Background="{Binding AccentColorHex, Converter={StaticResource HexToBrushConverter}}" />
 
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <ui:Button Content="起動" Appearance="Primary" Margin="0,0,6,0"
-                                                   Icon="{ui:SymbolIcon Symbol=Play24}" Command="{Binding StartCommand}" />
-                                        <ui:Button Content="停止" Appearance="Danger" Margin="0,0,6,0"
-                                                   Icon="{ui:SymbolIcon Symbol=Stop24}" Command="{Binding StopCommand}" />
-                                        <ui:Button ToolTip="編集" Margin="0,0,6,0"
-                                                   Icon="{ui:SymbolIcon Symbol=Edit24}" Click="EditSession_Click" />
-                                        <ui:Button ToolTip="削除" Appearance="Secondary"
-                                                   Icon="{ui:SymbolIcon Symbol=Delete24}" Click="DeleteSession_Click" />
-                                    </StackPanel>
-                                </Grid>
-                            </ui:Card>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-        </Grid>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding WorkingDirectory}" Opacity="0.7" FontSize="12"
+                                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding WorkingDirectory}" Margin="0,2,0,0" />
+                                                    <TextBlock Opacity="0.55" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
+                                                        <Run Text="{Binding Executable, Mode=OneWay}" />
+                                                        <Run Text=" " />
+                                                        <Run Text="{Binding Arguments, Mode=OneWay}" />
+                                                    </TextBlock>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                                                 Fill="{Binding IsRunning, Converter={StaticResource StatusBrushConverter}}" />
+                                                        <TextBlock Text="{Binding IsRunning, Converter={StaticResource StatusTextConverter}}"
+                                                                   Margin="6,0,0,0" FontSize="12" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding ScheduleSummary}" Opacity="0.55" FontSize="11" Margin="0,4,0,0"
+                                                               Visibility="{Binding ScheduleSummary, Converter={StaticResource NotNullToVisibilityConverter}}" />
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <ui:Button Content="起動" Appearance="Primary" Margin="0,0,6,0"
+                                                               Icon="{ui:SymbolIcon Symbol=Play24}" Command="{Binding StartCommand}" />
+                                                    <ui:Button Content="停止" Appearance="Danger" Margin="0,0,6,0"
+                                                               Icon="{ui:SymbolIcon Symbol=Stop24}" Command="{Binding StopCommand}" />
+                                                    <ui:Button ToolTip="編集" Margin="0,0,6,0"
+                                                               Icon="{ui:SymbolIcon Symbol=Edit24}" Click="EditSession_Click" />
+                                                    <ui:Button ToolTip="削除" Appearance="Secondary"
+                                                               Icon="{ui:SymbolIcon Symbol=Delete24}" Click="DeleteSession_Click" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </ui:Card>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="設定ファイル">
+                <views:ConfigFilesTab DataContext="{Binding ConfigFiles}" />
+            </TabItem>
+        </TabControl>
     </Grid>
 </ui:FluentWindow>

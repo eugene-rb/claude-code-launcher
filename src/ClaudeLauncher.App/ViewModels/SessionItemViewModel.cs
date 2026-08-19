@@ -39,6 +39,9 @@ public partial class SessionItemViewModel : ObservableObject
     [ObservableProperty]
     private int? processId;
 
+    [ObservableProperty]
+    private string? scheduleSummary;
+
     public SessionItemViewModel(SessionProfile profile, ProcessLauncherService launcher)
     {
         Profile = profile;
@@ -48,6 +51,7 @@ public partial class SessionItemViewModel : ObservableObject
         executable = profile.Executable;
         arguments = profile.Arguments;
         accentColorHex = profile.AccentColorHex;
+        RefreshScheduleSummary();
     }
 
     public void ApplyProfile(SessionProfile updated)
@@ -58,6 +62,64 @@ public partial class SessionItemViewModel : ObservableObject
         Executable = updated.Executable;
         Arguments = updated.Arguments;
         AccentColorHex = updated.AccentColorHex;
+        RefreshScheduleSummary();
+    }
+
+    /// <summary>Called periodically by <see cref="MainViewModel"/>'s schedule timer. Returns true if
+    /// this session's persisted state changed (a launch fired, or a failed attempt was marked
+    /// handled) so the caller knows to persist sessions to disk.</summary>
+    public bool TryFireScheduledLaunch(DateTimeOffset now)
+    {
+        if (!ScheduleEvaluator.ShouldFire(Profile, IsRunning, now) || !StartCommand.CanExecute(null))
+        {
+            return false;
+        }
+
+        try
+        {
+            StartCommand.Execute(null);
+        }
+        catch (Exception)
+        {
+            // Unattended path: never retry-storm on failure (e.g. the working directory was
+            // deleted after the schedule was configured). Mark the schedule as handled instead.
+            if (Profile.Repeat == ScheduleRepeat.Once)
+            {
+                Profile.ScheduleEnabled = false;
+            }
+            else
+            {
+                Profile.LastLaunchedAt = now;
+            }
+
+            ScheduleSummary = "予約起動に失敗しました";
+            return true;
+        }
+
+        if (Profile.Repeat == ScheduleRepeat.Once)
+        {
+            Profile.ScheduleEnabled = false;
+        }
+
+        RefreshScheduleSummary();
+        return true;
+    }
+
+    /// <summary>Recomputes the human-readable schedule badge. Public so <see cref="MainViewModel"/>'s
+    /// periodic timer can refresh it even on ticks where nothing fired — a "Once" schedule whose
+    /// grace window has already elapsed (e.g. the app was closed through it) must stop claiming
+    /// 起動予定 since <see cref="ScheduleEvaluator.ShouldFire"/> will never fire it.</summary>
+    public void RefreshScheduleSummary()
+    {
+        ScheduleSummary = Profile switch
+        {
+            { ScheduleEnabled: false } => null,
+            { Repeat: ScheduleRepeat.Once, ScheduledAt: { } at } when at + ScheduleEvaluator.GraceWindow < DateTimeOffset.Now
+                => $"{at.LocalDateTime:yyyy/MM/dd HH:mm} の予約は実行されませんでした",
+            { Repeat: ScheduleRepeat.Once, ScheduledAt: { } at } => $"{at.LocalDateTime:yyyy/MM/dd HH:mm} に起動予定",
+            { Repeat: ScheduleRepeat.Daily, DailyTime: { } time } => $"毎日 {time:hh\\:mm} に起動",
+            _ => null,
+        };
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
