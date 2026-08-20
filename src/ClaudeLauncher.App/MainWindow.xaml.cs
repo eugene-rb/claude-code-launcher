@@ -32,6 +32,16 @@ public partial class MainWindow : FluentWindow
         }
     }
 
+    private void ImportProjects_Click(object sender, RoutedEventArgs e)
+    {
+        var registered = ViewModel.Sessions.Select(s => s.WorkingDirectory);
+        var dialog = new ImportProjectWindow(registered) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.SelectedProfiles.Count > 0)
+        {
+            ViewModel.AddProfiles(dialog.SelectedProfiles);
+        }
+    }
+
     private void EditSession_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not SessionItemViewModel item)

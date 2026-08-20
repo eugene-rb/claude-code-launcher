@@ -88,6 +88,16 @@ public partial class MainViewModel : ObservableObject
         Persist();
     }
 
+    public void AddProfiles(IEnumerable<SessionProfile> profiles)
+    {
+        foreach (var profile in profiles)
+        {
+            Sessions.Add(new SessionItemViewModel(profile, _launcher));
+        }
+
+        Persist();
+    }
+
     public void ApplyEdit(SessionItemViewModel item, SessionProfile updated)
     {
         item.ApplyProfile(updated);
