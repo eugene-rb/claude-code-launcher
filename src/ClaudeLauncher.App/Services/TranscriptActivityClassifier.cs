@@ -1,5 +1,3 @@
-using System.IO;
-using System.Text;
 using System.Text.Json;
 using ClaudeLauncher.App.Models;
 
@@ -19,29 +17,17 @@ namespace ClaudeLauncher.App.Services;
 /// <see cref="StatusMarkerStore"/> signal, since a permission prompt is never written to the transcript.</summary>
 public static class TranscriptActivityClassifier
 {
-    private const int TailBytes = 64 * 1024;
-
     public static ProjectActivityState? ClassifyLastTurn(string jsonlFilePath)
     {
-        string text;
-        try
-        {
-            using var fs = new FileStream(jsonlFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var start = Math.Max(0, fs.Length - TailBytes);
-            fs.Seek(start, SeekOrigin.Begin);
-            var buffer = new byte[fs.Length - start];
-            var read = fs.Read(buffer, 0, buffer.Length);
-            text = Encoding.UTF8.GetString(buffer, 0, read);
-        }
-        catch (IOException)
-        {
-            return null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
+        var text = TranscriptTailFile.ReadTail(jsonlFilePath);
+        return text is null ? null : ClassifyText(text);
+    }
 
+    /// <summary>Classifies an already-read tail of a transcript. Exposed internally so a caller that
+    /// also needs <see cref="TranscriptPreviewReader"/>'s output can read the file once and pass the
+    /// same text to both, instead of reading it twice.</summary>
+    internal static ProjectActivityState? ClassifyText(string text)
+    {
         ProjectActivityState? result = null;
         foreach (var line in text.Split('\n'))
         {

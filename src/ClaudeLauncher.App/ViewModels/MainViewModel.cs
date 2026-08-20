@@ -11,15 +11,24 @@ public partial class MainViewModel : ObservableObject
 {
     private static readonly TimeSpan ScheduleCheckInterval = TimeSpan.FromSeconds(20);
 
+    /// <summary>Cadence for the dashboard's live preview (and activity badge). Much shorter than
+    /// <see cref="ScheduleCheckInterval"/> since this only re-reads a bounded tail of each project's
+    /// transcript file - cheap enough to poll often - and "real-time" preview would otherwise lag up to
+    /// 20 seconds behind whatever Claude just did.</summary>
+    private static readonly TimeSpan DashboardRefreshInterval = TimeSpan.FromSeconds(2);
+
     private readonly SessionProfileStore _store;
     private readonly ProcessLauncherService _launcher;
     private readonly DispatcherTimer _scheduleTimer;
+    private readonly DispatcherTimer _dashboardTimer;
 
     public ObservableCollection<SessionItemViewModel> Sessions { get; } = [];
 
     public ConfigFilesViewModel ConfigFiles { get; }
 
     public ExtensionsViewModel Extensions { get; } = new();
+
+    public SettingsViewModel Settings { get; }
 
     [ObservableProperty]
     private int awaitingApprovalCount;
@@ -31,18 +40,19 @@ public partial class MainViewModel : ObservableObject
     private int idleCount;
 
     public MainViewModel()
-        : this(new SessionProfileStore(), new ProcessLauncherService())
+        : this(new SessionProfileStore(), new ProcessLauncherService(), new SettingsViewModel())
     {
     }
 
-    public MainViewModel(SessionProfileStore store, ProcessLauncherService launcher)
+    public MainViewModel(SessionProfileStore store, ProcessLauncherService launcher, SettingsViewModel settings)
     {
         _store = store;
         _launcher = launcher;
+        Settings = settings;
 
         foreach (var profile in _store.Load())
         {
-            Sessions.Add(new SessionItemViewModel(profile, _launcher));
+            Sessions.Add(new SessionItemViewModel(profile, _launcher, Settings));
         }
 
         ConfigFiles = new ConfigFilesViewModel(Sessions);
@@ -51,6 +61,24 @@ public partial class MainViewModel : ObservableObject
         _scheduleTimer = new DispatcherTimer { Interval = ScheduleCheckInterval };
         _scheduleTimer.Tick += (_, _) => CheckSchedules();
         _scheduleTimer.Start();
+
+        _dashboardTimer = new DispatcherTimer { Interval = DashboardRefreshInterval };
+        _dashboardTimer.Tick += (_, _) => RefreshDashboard();
+        _dashboardTimer.Start();
+    }
+
+    private void RefreshDashboard()
+    {
+        var markers = StatusMarkerStore.ReadFresh(StatusMarkerStore.GetDefaultDirectory(), StatusMarkerStore.DefaultMaxAge, DateTimeOffset.Now);
+
+        foreach (var session in Sessions)
+        {
+            // Runs for every project regardless of ScheduleEnabled/IsRunning - imported projects this
+            // app never launched still need their dashboard badge and preview kept current.
+            session.RefreshActivityState(markers);
+        }
+
+        RefreshActivitySummary();
     }
 
     private void CheckSchedules()
@@ -58,14 +86,8 @@ public partial class MainViewModel : ObservableObject
         var now = DateTimeOffset.Now;
         var anyFired = false;
 
-        var markers = StatusMarkerStore.ReadFresh(StatusMarkerStore.GetDefaultDirectory(), StatusMarkerStore.DefaultMaxAge, now);
-
         foreach (var session in Sessions)
         {
-            // Runs for every project regardless of ScheduleEnabled/IsRunning - imported projects this
-            // app never launched still need their dashboard badge kept current.
-            session.RefreshActivityState(markers);
-
             if (session.TryDetectUsageLimit())
             {
                 anyFired = true;
@@ -92,8 +114,6 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
-        RefreshActivitySummary();
-
         if (anyFired)
         {
             Persist();
@@ -109,7 +129,7 @@ public partial class MainViewModel : ObservableObject
 
     public void AddProfile(SessionProfile profile)
     {
-        Sessions.Add(new SessionItemViewModel(profile, _launcher));
+        Sessions.Add(new SessionItemViewModel(profile, _launcher, Settings));
         RefreshActivitySummary();
         Persist();
     }
@@ -118,7 +138,7 @@ public partial class MainViewModel : ObservableObject
     {
         foreach (var profile in profiles)
         {
-            Sessions.Add(new SessionItemViewModel(profile, _launcher));
+            Sessions.Add(new SessionItemViewModel(profile, _launcher, Settings));
         }
 
         RefreshActivitySummary();

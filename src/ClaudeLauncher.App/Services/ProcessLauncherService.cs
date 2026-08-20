@@ -77,12 +77,14 @@ public sealed class ProcessLauncherService
     }
 
     /// <summary>Starts the session's PowerShell window. The caller owns the returned process (keep a
-    /// reference alive and subscribe to <see cref="Process.Exited"/> as needed). Pass
-    /// <paramref name="resume"/> to continue the most recent conversation instead of a fresh one.</summary>
-    public Process Start(SessionProfile profile, bool resume = false)
+    /// reference alive and subscribe to <see cref="Process.Exited"/> as needed). <paramref name="executable"/>
+    /// and <paramref name="argumentsText"/> are the app-wide default from <see cref="Models.AppSettings"/>
+    /// unless the caller is launching with a one-off override. Pass <paramref name="resume"/> to
+    /// continue the most recent conversation instead of a fresh one.</summary>
+    public Process Start(SessionProfile profile, string executable, string argumentsText, bool resume = false)
     {
-        var arguments = BuildLaunchArguments(profile.Arguments, resume);
-        var script = BuildScript(profile.Name, profile.Executable, arguments);
+        var arguments = BuildLaunchArguments(argumentsText, resume);
+        var script = BuildScript(profile.Name, executable, arguments);
         var encoded = EncodeCommand(script);
 
         var startInfo = new ProcessStartInfo

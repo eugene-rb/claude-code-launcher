@@ -70,8 +70,6 @@ public partial class ImportProjectWindow : FluentWindow
         {
             Name = row.Info.SuggestedName,
             WorkingDirectory = row.Info.WorkingDirectory,
-            Executable = "claude",
-            Arguments = string.Empty,
             AccentColorHex = AccentPalette[index % AccentPalette.Length],
         }).ToList();
 

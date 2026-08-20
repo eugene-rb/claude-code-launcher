@@ -99,11 +99,6 @@
                                                     <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" />
                                                     <TextBlock Text="{Binding WorkingDirectory}" Opacity="0.7" FontSize="12"
                                                                TextTrimming="CharacterEllipsis" ToolTip="{Binding WorkingDirectory}" Margin="0,2,0,0" />
-                                                    <TextBlock Opacity="0.55" FontSize="12" Margin="0,2,0,0" TextTrimming="CharacterEllipsis">
-                                                        <Run Text="{Binding Executable, Mode=OneWay}" />
-                                                        <Run Text=" " />
-                                                        <Run Text="{Binding Arguments, Mode=OneWay}" />
-                                                    </TextBlock>
                                                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                                         <Ellipse Width="8" Height="8" VerticalAlignment="Center"
                                                                  Fill="{Binding IsRunning, Converter={StaticResource StatusBrushConverter}}" />
@@ -116,6 +111,12 @@
                                                                    Margin="6,0,0,0" FontSize="12"
                                                                    Visibility="{Binding ActivityState, Converter={StaticResource ActivityStateVisibilityConverter}}" />
                                                     </StackPanel>
+                                                    <Border Margin="0,8,0,0" Padding="8,6" CornerRadius="4"
+                                                            Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                                            Visibility="{Binding PreviewText, Converter={StaticResource NotNullToVisibilityConverter}}">
+                                                        <TextBlock Text="{Binding PreviewText}" FontSize="11" Opacity="0.8"
+                                                                   TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="48" />
+                                                    </Border>
                                                     <TextBlock Text="{Binding ScheduleSummary}" Opacity="0.55" FontSize="11" Margin="0,4,0,0"
                                                                Visibility="{Binding ScheduleSummary, Converter={StaticResource NotNullToVisibilityConverter}}" />
                                                     <TextBlock Text="{Binding LimitStatusSummary}" Opacity="0.55" FontSize="11" Margin="0,4,0,0"
@@ -130,8 +131,32 @@
                                                 </StackPanel>
 
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <ui:Button Content="起動" Appearance="Primary" Margin="0,0,6,0"
-                                                               Icon="{ui:SymbolIcon Symbol=Play24}" Command="{Binding StartCommand}" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
+                                                        <ui:Button Content="起動" Appearance="Primary"
+                                                                   Icon="{ui:SymbolIcon Symbol=Play24}" Command="{Binding StartCommand}" />
+                                                        <ui:Button x:Name="CustomLaunchAnchor" Padding="4,0" Appearance="Primary"
+                                                                   Margin="1,0,0,0" ToolTip="既定と異なるオプションでこの1回だけ起動"
+                                                                   Icon="{ui:SymbolIcon Symbol=ChevronDown24}"
+                                                                   Command="{Binding ToggleCustomLaunchMenuCommand}" />
+                                                        <Popup IsOpen="{Binding IsCustomLaunchOpen, Mode=TwoWay}" StaysOpen="False"
+                                                               Placement="Bottom" PlacementTarget="{Binding ElementName=CustomLaunchAnchor}"
+                                                               AllowsTransparency="True" PopupAnimation="Fade">
+                                                            <Border Background="{DynamicResource ApplicationBackgroundBrush}"
+                                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,4,0,0" MinWidth="260">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="この起動だけ、既定と異なる起動オプションを使う" FontSize="11"
+                                                                               Opacity="0.6" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                                                    <TextBox Text="{Binding CustomLaunchArguments, UpdateSourceTrigger=PropertyChanged}"
+                                                                             Margin="0,0,0,8" />
+                                                                    <ui:Button Content="この内容で起動" Appearance="Primary" HorizontalAlignment="Right"
+                                                                               Command="{Binding StartCustomCommand}" />
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </Popup>
+                                                    </StackPanel>
+                                                    <ui:Button Content="-c" ToolTip="直近の会話を続きから再開して起動 (claude -c)" Appearance="Secondary" Margin="0,0,6,0"
+                                                               Icon="{ui:SymbolIcon Symbol=ArrowClockwise24}" Command="{Binding StartResumeCommand}" />
                                                     <ui:Button Content="停止" Appearance="Danger" Margin="0,0,6,0"
                                                                Icon="{ui:SymbolIcon Symbol=Stop24}" Command="{Binding StopCommand}" />
                                                     <ui:Button ToolTip="編集" Margin="0,0,6,0"
@@ -147,6 +172,10 @@
                         </ScrollViewer>
                     </Grid>
                 </Grid>
+            </TabItem>
+
+            <TabItem Header="設定">
+                <views:SettingsTab DataContext="{Binding Settings}" />
             </TabItem>
 
             <TabItem Header="設定ファイル">
