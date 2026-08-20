@@ -20,7 +20,6 @@
         <conv:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
         <conv:HexToBrushConverter x:Key="HexToBrushConverter" />
         <conv:NotNullToVisibilityConverter x:Key="NotNullToVisibilityConverter" />
-        <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
         <conv:ActivityStateToTextConverter x:Key="ActivityStateTextConverter" />
         <conv:ActivityStateToBrushConverter x:Key="ActivityStateBrushConverter" />
         <conv:ActivityStateToVisibilityConverter x:Key="ActivityStateVisibilityConverter" />
@@ -121,41 +120,30 @@
                                                                Visibility="{Binding ScheduleSummary, Converter={StaticResource NotNullToVisibilityConverter}}" />
                                                     <TextBlock Text="{Binding LimitStatusSummary}" Opacity="0.55" FontSize="11" Margin="0,4,0,0"
                                                                Visibility="{Binding LimitStatusSummary, Converter={StaticResource NotNullToVisibilityConverter}}" />
-                                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                                                                Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                        <TextBox Text="{Binding ManualLimitTimeText, UpdateSourceTrigger=PropertyChanged}"
-                                                                 Width="70" ToolTip="表示された制限リセット時刻を H:mm で入力" />
-                                                        <ui:Button Content="制限を記録" Margin="6,0,0,0" FontSize="11"
-                                                                   Command="{Binding RecordManualLimitCommand}" />
-                                                    </StackPanel>
                                                 </StackPanel>
 
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <StackPanel Orientation="Horizontal" Margin="0,0,6,0">
-                                                        <ui:Button Content="起動" Appearance="Primary"
-                                                                   Icon="{ui:SymbolIcon Symbol=Play24}" Command="{Binding StartCommand}" />
-                                                        <ui:Button x:Name="CustomLaunchAnchor" Padding="4,0" Appearance="Primary"
-                                                                   Margin="1,0,0,0" ToolTip="既定と異なるオプションでこの1回だけ起動"
-                                                                   Icon="{ui:SymbolIcon Symbol=ChevronDown24}"
-                                                                   Command="{Binding ToggleCustomLaunchMenuCommand}" />
-                                                        <Popup IsOpen="{Binding IsCustomLaunchOpen, Mode=TwoWay}" StaysOpen="False"
-                                                               Placement="Bottom" PlacementTarget="{Binding ElementName=CustomLaunchAnchor}"
-                                                               AllowsTransparency="True" PopupAnimation="Fade">
-                                                            <Border Background="{DynamicResource ApplicationBackgroundBrush}"
-                                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                                                    BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,4,0,0" MinWidth="260">
-                                                                <StackPanel>
-                                                                    <TextBlock Text="この起動だけ、既定と異なる起動オプションを使う" FontSize="11"
-                                                                               Opacity="0.6" TextWrapping="Wrap" Margin="0,0,0,8" />
-                                                                    <TextBox Text="{Binding CustomLaunchArguments, UpdateSourceTrigger=PropertyChanged}"
-                                                                             Margin="0,0,0,8" />
-                                                                    <ui:Button Content="この内容で起動" Appearance="Primary" HorizontalAlignment="Right"
-                                                                               Command="{Binding StartCustomCommand}" />
-                                                                </StackPanel>
-                                                            </Border>
-                                                        </Popup>
-                                                    </StackPanel>
-                                                    <ui:Button Content="-c" ToolTip="直近の会話を続きから再開して起動 (claude -c)" Appearance="Secondary" Margin="0,0,6,0"
+                                                    <ui:SplitButton Content="起動" Appearance="Primary" Margin="0,0,6,0"
+                                                                     Icon="{ui:SymbolIcon Symbol=Play24}" Command="{Binding StartCommand}"
+                                                                     IsDropDownOpen="{Binding IsCustomLaunchOpen, Mode=TwoWay}">
+                                                        <ui:SplitButton.Flyout>
+                                                            <ContextMenu>
+                                                                <MenuItem Focusable="False" StaysOpenOnClick="True">
+                                                                    <MenuItem.Header>
+                                                                        <StackPanel Margin="4" MinWidth="260">
+                                                                            <TextBlock Text="この起動だけ、既定と異なる起動オプションを使う" FontSize="11"
+                                                                                       Opacity="0.6" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                                                            <TextBox Text="{Binding CustomLaunchArguments, UpdateSourceTrigger=PropertyChanged}"
+                                                                                     Margin="0,0,0,8" />
+                                                                            <ui:Button Content="この内容で起動" Appearance="Primary" HorizontalAlignment="Right"
+                                                                                       Command="{Binding StartCustomCommand}" />
+                                                                        </StackPanel>
+                                                                    </MenuItem.Header>
+                                                                </MenuItem>
+                                                            </ContextMenu>
+                                                        </ui:SplitButton.Flyout>
+                                                    </ui:SplitButton>
+                                                    <ui:Button Content="続きから" ToolTip="直近の会話を続きから再開して起動 (claude -c)" Appearance="Secondary" Margin="0,0,6,0"
                                                                Icon="{ui:SymbolIcon Symbol=ArrowClockwise24}" Command="{Binding StartResumeCommand}" />
                                                     <ui:Button Content="停止" Appearance="Danger" Margin="0,0,6,0"
                                                                Icon="{ui:SymbolIcon Symbol=Stop24}" Command="{Binding StopCommand}" />

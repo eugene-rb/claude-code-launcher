@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
@@ -49,7 +48,6 @@ public partial class SessionItemViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     [NotifyCanExecuteChangedFor(nameof(StartResumeCommand))]
     [NotifyCanExecuteChangedFor(nameof(StartCustomCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ToggleCustomLaunchMenuCommand))]
     [NotifyCanExecuteChangedFor(nameof(StopCommand))]
     private bool isRunning;
 
@@ -63,9 +61,6 @@ public partial class SessionItemViewModel : ObservableObject
     private string? limitStatusSummary;
 
     [ObservableProperty]
-    private string manualLimitTimeText = string.Empty;
-
-    [ObservableProperty]
     private ProjectActivityState activityState = ProjectActivityState.Unknown;
 
     /// <summary>Short excerpt of the most recent conversation turn (last user prompt / last assistant
@@ -74,7 +69,9 @@ public partial class SessionItemViewModel : ObservableObject
     private string? previewText;
 
     /// <summary>Whether the "起動" split-button's dropdown (one-off launch options, for this launch
-    /// only) is open.</summary>
+    /// only) is open. Two-way bound to <c>ui:SplitButton.IsDropDownOpen</c>, which the control itself
+    /// flips when its toggle part is clicked - <see cref="OnIsCustomLaunchOpenChanged"/> reacts to that
+    /// rather than a command driving it.</summary>
     [ObservableProperty]
     private bool isCustomLaunchOpen;
 
@@ -82,6 +79,16 @@ public partial class SessionItemViewModel : ObservableObject
     /// time the dropdown opens; never persisted anywhere - a one-off override for a single launch.</summary>
     [ObservableProperty]
     private string customLaunchArguments = string.Empty;
+
+    partial void OnIsCustomLaunchOpenChanged(bool value)
+    {
+        if (value)
+        {
+            // Pre-fill from the current default each time it opens, so it's a starting point to tweak
+            // rather than whatever was left over (possibly blank) from the last time it was open.
+            CustomLaunchArguments = _settings.DefaultArguments;
+        }
+    }
 
     public SessionItemViewModel(SessionProfile profile, ProcessLauncherService launcher, SettingsViewModel settings)
     {
@@ -235,30 +242,6 @@ public partial class SessionItemViewModel : ObservableObject
         timer.Start();
     }
 
-    /// <summary>Manual fallback for when auto-detection doesn't fire (e.g. the reset-time wording
-    /// changes in a future CLI version): the user types the reset time they see on screen (H:mm,
-    /// today or tomorrow if already past) and the app schedules the same 5-minutes-later resume.</summary>
-    [RelayCommand]
-    private void RecordManualLimit()
-    {
-        if (!TimeSpan.TryParseExact(ManualLimitTimeText.Trim(), ["h\\:mm", "hh\\:mm"], CultureInfo.InvariantCulture, out var time))
-        {
-            LimitStatusSummary = "時刻は H:mm 形式(例: 15:30)で入力してください";
-            return;
-        }
-
-        var now = DateTimeOffset.Now;
-        var candidate = new DateTimeOffset(now.Date + time, now.Offset);
-        if (candidate < now)
-        {
-            candidate = candidate.AddDays(1);
-        }
-
-        Profile.AutoResumeAt = candidate + TimeSpan.FromMinutes(5);
-        ManualLimitTimeText = string.Empty;
-        RefreshLimitStatusSummary();
-    }
-
     /// <summary>Recomputes the usage-limit-detection badge from <see cref="SessionProfile.AutoResumeAt"/>.
     /// Public so <see cref="MainViewModel"/>'s periodic timer can refresh it even on ticks where
     /// nothing fired.</summary>
@@ -345,21 +328,6 @@ public partial class SessionItemViewModel : ObservableObject
     /// usage-limit detection.</summary>
     [RelayCommand(CanExecute = nameof(CanStart))]
     private void StartResume() => Launch(resume: true);
-
-    /// <summary>Opens/closes the "起動" split-button's dropdown, where the user can launch with
-    /// arguments other than the app-wide default for just this one launch.</summary>
-    [RelayCommand(CanExecute = nameof(CanStart))]
-    private void ToggleCustomLaunchMenu()
-    {
-        if (!IsCustomLaunchOpen)
-        {
-            // Pre-fill from the current default each time it opens, so it's a starting point to tweak
-            // rather than whatever was left over (possibly blank) from the last time it was open.
-            CustomLaunchArguments = _settings.DefaultArguments;
-        }
-
-        IsCustomLaunchOpen = !IsCustomLaunchOpen;
-    }
 
     /// <summary>Launches with <see cref="CustomLaunchArguments"/> instead of the app-wide default -
     /// a one-off override, never written back to <see cref="SettingsViewModel"/>.</summary>
