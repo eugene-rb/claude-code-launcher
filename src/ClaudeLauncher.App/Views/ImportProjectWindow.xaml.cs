@@ -27,9 +27,9 @@ public partial class ImportProjectWindow : FluentWindow
     {
         InitializeComponent();
 
-        var registered = new HashSet<string>(alreadyRegisteredWorkingDirectories, StringComparer.OrdinalIgnoreCase);
+        var registered = alreadyRegisteredWorkingDirectories.ToList();
         var discovered = ExistingProjectScanner.Scan(ClaudeProjectPathResolver.GetProjectsRoot())
-            .Where(p => !registered.Contains(p.WorkingDirectory))
+            .Where(p => !registered.Any(r => WorkingDirectoryComparer.AreSame(r, p.WorkingDirectory)))
             .OrderByDescending(p => p.LastActivityAt);
 
         foreach (var info in discovered)

@@ -21,6 +21,15 @@ public partial class MainViewModel : ObservableObject
 
     public ExtensionsViewModel Extensions { get; } = new();
 
+    [ObservableProperty]
+    private int awaitingApprovalCount;
+
+    [ObservableProperty]
+    private int respondingCount;
+
+    [ObservableProperty]
+    private int idleCount;
+
     public MainViewModel()
         : this(new SessionProfileStore(), new ProcessLauncherService())
     {
@@ -37,6 +46,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         ConfigFiles = new ConfigFilesViewModel(Sessions);
+        RefreshActivitySummary();
 
         _scheduleTimer = new DispatcherTimer { Interval = ScheduleCheckInterval };
         _scheduleTimer.Tick += (_, _) => CheckSchedules();
@@ -48,8 +58,14 @@ public partial class MainViewModel : ObservableObject
         var now = DateTimeOffset.Now;
         var anyFired = false;
 
+        var markers = StatusMarkerStore.ReadFresh(StatusMarkerStore.GetDefaultDirectory(), StatusMarkerStore.DefaultMaxAge, now);
+
         foreach (var session in Sessions)
         {
+            // Runs for every project regardless of ScheduleEnabled/IsRunning - imported projects this
+            // app never launched still need their dashboard badge kept current.
+            session.RefreshActivityState(markers);
+
             if (session.TryDetectUsageLimit())
             {
                 anyFired = true;
@@ -76,15 +92,25 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
+        RefreshActivitySummary();
+
         if (anyFired)
         {
             Persist();
         }
     }
 
+    private void RefreshActivitySummary()
+    {
+        AwaitingApprovalCount = Sessions.Count(s => s.ActivityState == ProjectActivityState.AwaitingApproval);
+        RespondingCount = Sessions.Count(s => s.ActivityState == ProjectActivityState.Responding);
+        IdleCount = Sessions.Count(s => s.ActivityState == ProjectActivityState.Idle);
+    }
+
     public void AddProfile(SessionProfile profile)
     {
         Sessions.Add(new SessionItemViewModel(profile, _launcher));
+        RefreshActivitySummary();
         Persist();
     }
 
@@ -95,6 +121,7 @@ public partial class MainViewModel : ObservableObject
             Sessions.Add(new SessionItemViewModel(profile, _launcher));
         }
 
+        RefreshActivitySummary();
         Persist();
     }
 
@@ -107,6 +134,7 @@ public partial class MainViewModel : ObservableObject
     public void RemoveSession(SessionItemViewModel item)
     {
         Sessions.Remove(item);
+        RefreshActivitySummary();
         Persist();
     }
 

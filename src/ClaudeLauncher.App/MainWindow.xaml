@@ -21,6 +21,9 @@
         <conv:HexToBrushConverter x:Key="HexToBrushConverter" />
         <conv:NotNullToVisibilityConverter x:Key="NotNullToVisibilityConverter" />
         <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <conv:ActivityStateToTextConverter x:Key="ActivityStateTextConverter" />
+        <conv:ActivityStateToBrushConverter x:Key="ActivityStateBrushConverter" />
+        <conv:ActivityStateToVisibilityConverter x:Key="ActivityStateVisibilityConverter" />
     </ui:FluentWindow.Resources>
 
     <Grid>
@@ -32,9 +35,10 @@
         <ui:TitleBar Grid.Row="0" Title="Claude Code ランチャー" />
 
         <TabControl Grid.Row="1" Margin="24,4,24,24" SelectionChanged="MainTabControl_SelectionChanged">
-            <TabItem Header="セッション">
+            <TabItem Header="プロジェクト">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
@@ -44,22 +48,34 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="セッション" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="0" Text="プロジェクト" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <ui:Button Content="既存プロジェクトから追加" Appearance="Secondary" Margin="0,0,8,0"
                                        Icon="{ui:SymbolIcon Symbol=FolderArrowRight24}" Click="ImportProjects_Click" />
-                            <ui:Button Content="新規セッション" Appearance="Primary"
+                            <ui:Button Content="新規プロジェクト" Appearance="Primary"
                                        Icon="{ui:SymbolIcon Symbol=Add24}" Click="AddSession_Click" />
                         </StackPanel>
                     </Grid>
 
-                    <Grid Grid.Row="1">
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12"
+                                Visibility="{Binding Sessions.Count, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=Invert}">
+                        <TextBlock FontSize="12" Opacity="0.75">
+                            <Run Text="承認待ち" />
+                            <Run Text="{Binding AwaitingApprovalCount, Mode=OneWay}" FontWeight="SemiBold" />
+                            <Run Text="  ・  応答中" />
+                            <Run Text="{Binding RespondingCount, Mode=OneWay}" FontWeight="SemiBold" />
+                            <Run Text="  ・  待機" />
+                            <Run Text="{Binding IdleCount, Mode=OneWay}" FontWeight="SemiBold" />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Grid Grid.Row="2">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
                                     Visibility="{Binding Sessions.Count, Converter={StaticResource CountToVisibilityConverter}}">
-                            <TextBlock Text="セッションがまだありません" FontSize="16" Opacity="0.7" HorizontalAlignment="Center" />
-                            <TextBlock Text="起動ディレクトリとオプションを設定して、最初のセッションを作成しましょう" FontSize="12" Opacity="0.5"
+                            <TextBlock Text="プロジェクトがまだありません" FontSize="16" Opacity="0.7" HorizontalAlignment="Center" />
+                            <TextBlock Text="起動ディレクトリとオプションを設定して、最初のプロジェクトを作成しましょう" FontSize="12" Opacity="0.5"
                                        HorizontalAlignment="Center" Margin="0,4,0,16" />
-                            <ui:Button Content="最初のセッションを作成" Appearance="Primary" Icon="{ui:SymbolIcon Symbol=Add24}"
+                            <ui:Button Content="最初のプロジェクトを作成" Appearance="Primary" Icon="{ui:SymbolIcon Symbol=Add24}"
                                        HorizontalAlignment="Center" Click="AddSession_Click" />
                         </StackPanel>
 
@@ -93,6 +109,12 @@
                                                                  Fill="{Binding IsRunning, Converter={StaticResource StatusBrushConverter}}" />
                                                         <TextBlock Text="{Binding IsRunning, Converter={StaticResource StatusTextConverter}}"
                                                                    Margin="6,0,0,0" FontSize="12" />
+                                                        <Ellipse Width="8" Height="8" Margin="14,0,0,0" VerticalAlignment="Center"
+                                                                 Visibility="{Binding ActivityState, Converter={StaticResource ActivityStateVisibilityConverter}}"
+                                                                 Fill="{Binding ActivityState, Converter={StaticResource ActivityStateBrushConverter}}" />
+                                                        <TextBlock Text="{Binding ActivityState, Converter={StaticResource ActivityStateTextConverter}}"
+                                                                   Margin="6,0,0,0" FontSize="12"
+                                                                   Visibility="{Binding ActivityState, Converter={StaticResource ActivityStateVisibilityConverter}}" />
                                                     </StackPanel>
                                                     <TextBlock Text="{Binding ScheduleSummary}" Opacity="0.55" FontSize="11" Margin="0,4,0,0"
                                                                Visibility="{Binding ScheduleSummary, Converter={StaticResource NotNullToVisibilityConverter}}" />

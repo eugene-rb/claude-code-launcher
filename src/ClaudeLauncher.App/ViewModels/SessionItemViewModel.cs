@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using ClaudeLauncher.App.Models;
 using ClaudeLauncher.App.Services;
@@ -12,6 +13,11 @@ namespace ClaudeLauncher.App.ViewModels;
 /// Display properties mirror the profile so edits (via <see cref="ApplyProfile"/>) refresh bound UI.</summary>
 public partial class SessionItemViewModel : ObservableObject
 {
+    /// <summary>How stale a project's own transcript may be before its activity badge is hidden, for
+    /// projects this app didn't launch itself (no <see cref="IsRunning"/> process to confirm liveness
+    /// with). A launcher-managed running session always gets a badge regardless of this window.</summary>
+    private static readonly TimeSpan UnmanagedFreshnessWindow = TimeSpan.FromMinutes(5);
+
     private readonly ProcessLauncherService _launcher;
     private readonly TranscriptLimitWatcher _limitWatcher = new();
     private Process? _process;
@@ -50,6 +56,9 @@ public partial class SessionItemViewModel : ObservableObject
     [ObservableProperty]
     private string manualLimitTimeText = string.Empty;
 
+    [ObservableProperty]
+    private ProjectActivityState activityState = ProjectActivityState.Unknown;
+
     public SessionItemViewModel(SessionProfile profile, ProcessLauncherService launcher)
     {
         Profile = profile;
@@ -61,6 +70,7 @@ public partial class SessionItemViewModel : ObservableObject
         accentColorHex = profile.AccentColorHex;
         RefreshScheduleSummary();
         RefreshLimitStatusSummary();
+        RefreshActivityState(StatusMarkerStore.ReadFresh(StatusMarkerStore.GetDefaultDirectory(), StatusMarkerStore.DefaultMaxAge, DateTimeOffset.Now));
     }
 
     public void ApplyProfile(SessionProfile updated)
@@ -228,6 +238,44 @@ public partial class SessionItemViewModel : ObservableObject
             { Repeat: ScheduleRepeat.Daily, DailyTime: { } time } => $"毎日 {time:hh\\:mm} に起動",
             _ => null,
         };
+    }
+
+    /// <summary>Called periodically by <see cref="MainViewModel"/>'s schedule timer, for every project
+    /// regardless of whether this app launched it (imported/other-terminal projects have no
+    /// <see cref="IsRunning"/> process to key off of, so liveness itself has to come from the
+    /// transcript). <paramref name="freshMarkers"/> is the full, already-staleness-filtered set of
+    /// "awaiting approval" markers for this poll — passed in rather than read here so
+    /// <see cref="MainViewModel"/> reads the marker directory once per tick, not once per project.</summary>
+    public void RefreshActivityState(IReadOnlyList<StatusMarker> freshMarkers)
+    {
+        var hasFreshMarker = freshMarkers.Any(m => WorkingDirectoryComparer.AreSame(m.Cwd, Profile.WorkingDirectory));
+        if (hasFreshMarker)
+        {
+            // Precedence: awaiting approval always wins, even over a transcript that looks idle (the
+            // permission prompt itself isn't written to the transcript, so the two signals can't
+            // disagree in a way that should be resolved any other way).
+            ActivityState = ProjectActivityState.AwaitingApproval;
+            return;
+        }
+
+        var projectDir = Path.Combine(ClaudeProjectPathResolver.GetProjectsRoot(), ClaudeProjectPathResolver.ToProjectDirName(Profile.WorkingDirectory));
+        var file = TranscriptLimitWatcher.PickMostRecentTranscriptFile(projectDir);
+        if (file is null)
+        {
+            ActivityState = ProjectActivityState.Unknown;
+            return;
+        }
+
+        if (!IsRunning && File.GetLastWriteTimeUtc(file) < DateTime.UtcNow - UnmanagedFreshnessWindow)
+        {
+            // This app has no process handle for the project, and its transcript hasn't moved
+            // recently either — most likely nobody has a `claude` session open on it right now.
+            // Showing "待機" forever for a project nobody has touched in days would be misleading.
+            ActivityState = ProjectActivityState.Unknown;
+            return;
+        }
+
+        ActivityState = TranscriptActivityClassifier.ClassifyLastTurn(file) ?? ProjectActivityState.Unknown;
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]

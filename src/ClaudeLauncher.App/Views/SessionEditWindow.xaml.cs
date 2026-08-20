@@ -26,18 +26,20 @@ public partial class SessionEditWindow : FluentWindow
     private static readonly string[] TimeFormats = ["h\\:mm", "hh\\:mm"];
 
     private readonly SessionProfile _profile;
+    private readonly List<string> _otherWorkingDirectories;
     private readonly List<Border> _swatches = [];
     private string _selectedAccentHex;
 
-    public SessionEditWindow(SessionProfile profile, bool isNew)
+    public SessionEditWindow(SessionProfile profile, bool isNew, IEnumerable<string> otherWorkingDirectories)
     {
         InitializeComponent();
         SystemThemeWatcher.Watch(this);
 
         _profile = profile;
+        _otherWorkingDirectories = [.. otherWorkingDirectories];
         _selectedAccentHex = string.IsNullOrWhiteSpace(profile.AccentColorHex) ? AccentPalette[0] : profile.AccentColorHex;
 
-        Title = isNew ? "新規セッション" : "セッションを編集";
+        Title = isNew ? "新規プロジェクト" : "プロジェクトを編集";
         NameTextBox.Text = profile.Name;
         WorkingDirectoryTextBox.Text = profile.WorkingDirectory;
         ExecutableTextBox.Text = string.IsNullOrWhiteSpace(profile.Executable) ? "claude" : profile.Executable;
@@ -174,6 +176,12 @@ public partial class SessionEditWindow : FluentWindow
         if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
         {
             ShowValidationError("作業ディレクトリが存在しません。正しいパスを指定してください。");
+            return;
+        }
+
+        if (_otherWorkingDirectories.Any(other => WorkingDirectoryComparer.AreSame(other, workingDirectory)))
+        {
+            ShowValidationError("このディレクトリは既に別のプロジェクトとして登録されています。");
             return;
         }
 

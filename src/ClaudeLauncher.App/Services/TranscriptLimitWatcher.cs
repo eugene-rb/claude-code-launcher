@@ -103,4 +103,21 @@ public sealed class TranscriptLimitWatcher(string? projectsRootOverride = null)
             .OrderByDescending(fi => fi.LastWriteTimeUtc)
             .FirstOrDefault()?.FullName;
     }
+
+    /// <summary>Picks the most recently modified *.jsonl in the project directory, with no lower bound
+    /// on when it was touched. Used for projects this app didn't itself launch (no known process-start
+    /// time to anchor "this run's transcript" against) — the dashboard's freshness check on the result's
+    /// own LastWriteTimeUtc is what keeps a long-stale project from being misread as active.</summary>
+    public static string? PickMostRecentTranscriptFile(string projectDir)
+    {
+        if (!Directory.Exists(projectDir))
+        {
+            return null;
+        }
+
+        return Directory.EnumerateFiles(projectDir, "*.jsonl")
+            .Select(p => new FileInfo(p))
+            .OrderByDescending(fi => fi.LastWriteTimeUtc)
+            .FirstOrDefault()?.FullName;
+    }
 }
