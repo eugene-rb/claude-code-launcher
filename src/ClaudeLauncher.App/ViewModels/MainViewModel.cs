@@ -30,6 +30,8 @@ public partial class MainViewModel : ObservableObject
 
     public SettingsViewModel Settings { get; }
 
+    public UpdateViewModel Update { get; }
+
     [ObservableProperty]
     private int awaitingApprovalCount;
 
@@ -40,15 +42,16 @@ public partial class MainViewModel : ObservableObject
     private int idleCount;
 
     public MainViewModel()
-        : this(new SessionProfileStore(), new ProcessLauncherService(), new SettingsViewModel())
+        : this(new SessionProfileStore(), new ProcessLauncherService())
     {
     }
 
-    public MainViewModel(SessionProfileStore store, ProcessLauncherService launcher, SettingsViewModel settings)
+    public MainViewModel(SessionProfileStore store, ProcessLauncherService launcher)
     {
         _store = store;
         _launcher = launcher;
-        Settings = settings;
+        Update = new UpdateViewModel();
+        Settings = new SettingsViewModel(new AppSettingsStore(), new StartupRegistrationService(), Update);
 
         foreach (var profile in _store.Load())
         {

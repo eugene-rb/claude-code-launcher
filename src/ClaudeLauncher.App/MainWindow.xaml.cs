@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using ClaudeLauncher.App.Models;
@@ -5,6 +6,7 @@ using ClaudeLauncher.App.ViewModels;
 using ClaudeLauncher.App.Views;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
+using Wpf.Ui.Tray.Controls;
 
 namespace ClaudeLauncher.App;
 
@@ -13,6 +15,10 @@ namespace ClaudeLauncher.App;
 /// </summary>
 public partial class MainWindow : FluentWindow
 {
+    private const string DefaultTrayTooltip = "Claude Code ランチャー";
+
+    private bool _isExiting;
+
     private MainViewModel ViewModel => (MainViewModel)DataContext;
 
     public MainWindow()
@@ -20,6 +26,49 @@ public partial class MainWindow : FluentWindow
         InitializeComponent();
         DataContext = new MainViewModel();
         SystemThemeWatcher.Watch(this);
+
+        ViewModel.Update.BeforeApply = () => TrayIcon.Dispose();
+        ViewModel.Update.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(UpdateViewModel.State) && ViewModel.Update.State == UpdateState.ReadyToApply && !IsVisible)
+            {
+                TrayIcon.TooltipText = "アップデートの準備ができました - クリックして開く";
+            }
+        };
+    }
+
+    /// <summary>Shown by the tray icon's "開く" item, its left-click, and when a second app instance
+    /// signals the running one to come forward (see <see cref="App.OnStartup"/>).</summary>
+    public void RestoreFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+        TrayIcon.TooltipText = DefaultTrayTooltip;
+    }
+
+    private void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_isExiting)
+        {
+            return;
+        }
+
+        // Closing the window minimizes to the tray instead of exiting - real exit only happens via
+        // the tray icon's "終了" item (TrayExit_Click), which sets _isExiting first.
+        e.Cancel = true;
+        Hide();
+    }
+
+    private void TrayIcon_LeftClick(NotifyIcon sender, RoutedEventArgs e) => RestoreFromTray();
+
+    private void TrayOpen_Click(object sender, RoutedEventArgs e) => RestoreFromTray();
+
+    private void TrayExit_Click(object sender, RoutedEventArgs e)
+    {
+        _isExiting = true;
+        TrayIcon.Dispose();
+        System.Windows.Application.Current.Shutdown();
     }
 
     private void AddSession_Click(object sender, RoutedEventArgs e)
