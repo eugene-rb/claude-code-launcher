@@ -1,4 +1,5 @@
 using System.Text;
+using ClaudeLauncher.App.Models;
 using ClaudeLauncher.App.Services;
 
 namespace ClaudeLauncher.Tests;
@@ -87,6 +88,66 @@ public class ProcessLauncherServiceTests
         var arguments = ProcessLauncherService.BuildLaunchArguments("--model sonnet --resume", resume: true);
 
         Assert.Equal(["--model", "sonnet", "-c"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_ResumingWithCompactFirst_AppendsCompactAsThePositionalPrompt()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments(
+            "--model sonnet", resume: true, ResumeMode.CompactFirst);
+
+        // The prompt argument has to trail the flags: the CLI is `claude [options] [prompt]`.
+        Assert.Equal(["--model", "sonnet", "-c", "/compact"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_ResumingWithFullSession_LeavesTheConversationUncompacted()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments(
+            "--model sonnet", resume: true, ResumeMode.FullSession);
+
+        Assert.Equal(["--model", "sonnet", "-c"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_NotResuming_IgnoresResumeModeEntirely()
+    {
+        // A fresh session has no conversation to compact, so /compact must not leak into it.
+        var arguments = ProcessLauncherService.BuildLaunchArguments(
+            "--model sonnet", resume: false, ResumeMode.CompactFirst);
+
+        Assert.Equal(["--model", "sonnet"], arguments);
+    }
+
+    [Fact]
+    public void BuildResumeEnvironment_NotResuming_IsEmptySoAttendedLaunchesAreUntouched()
+    {
+        var environment = ProcessLauncherService.BuildResumeEnvironment(resume: false);
+
+        Assert.Empty(environment);
+    }
+
+    [Fact]
+    public void BuildResumeEnvironment_Resuming_RaisesBothResumeChooserThresholds()
+    {
+        // Claude Code's "Resume from summary?" chooser blocks on a keypress and would hang an
+        // unattended auto-resume; it is skipped when the session is under both thresholds.
+        var environment = ProcessLauncherService.BuildResumeEnvironment(resume: true);
+
+        Assert.Equal("525600", environment["CLAUDE_CODE_RESUME_THRESHOLD_MINUTES"]);
+        Assert.Equal("999999999", environment["CLAUDE_CODE_RESUME_TOKEN_THRESHOLD"]);
+    }
+
+    [Fact]
+    public void BuildResumeEnvironment_Resuming_ThresholdsParseAsPlainIntegers()
+    {
+        // The CLI parses both variables with a plain integer parser and ignores anything that is not
+        // finite, which would silently bring the chooser back.
+        foreach (var value in ProcessLauncherService.BuildResumeEnvironment(resume: true).Values)
+        {
+            Assert.True(int.TryParse(value, out var parsed));
+            Assert.True(parsed > 0);
+        }
     }
 
     [Fact]

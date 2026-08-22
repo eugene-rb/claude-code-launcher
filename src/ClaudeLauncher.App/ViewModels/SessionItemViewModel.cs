@@ -341,7 +341,7 @@ public partial class SessionItemViewModel : ObservableObject
     private void Launch(bool resume, string? argumentsOverride = null)
     {
         var argumentsText = argumentsOverride ?? _settings.DefaultArguments;
-        _process = _launcher.Start(Profile, _settings.DefaultExecutable, argumentsText, resume);
+        _process = _launcher.Start(Profile, _settings.DefaultExecutable, argumentsText, resume, _settings.ResumeMode);
         _process.Exited += OnProcessExited;
         ProcessId = _process.Id;
         IsRunning = true;

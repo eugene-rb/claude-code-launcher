@@ -12,4 +12,9 @@ public sealed class AppSettings
     /// event; on detection the session is auto-relaunched with `-c` 5 minutes after the reset time.
     /// Applies to every project - see <see cref="ViewModels.SessionItemViewModel.TryDetectUsageLimit"/>.</summary>
     public bool AutoResumeOnLimitEnabled { get; set; }
+
+    /// <summary>Which branch of Claude Code's "Resume from summary?" chooser a resume launch takes on
+    /// the user's behalf. Applies to both the scheduled auto-resume and the manual "再開" button, since
+    /// neither can leave a blocking chooser on screen for an unattended relaunch to answer.</summary>
+    public ResumeMode ResumeMode { get; set; }
 }

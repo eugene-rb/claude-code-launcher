@@ -50,6 +50,23 @@
             </ui:Card>
 
             <ui:Card Margin="0,0,0,16">
+                <StackPanel Margin="4">
+                    <TextBlock Text="再開時の会話" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.6" Margin="0,0,0,16">
+                        自動再開と「再開」ボタンが
+                        <Run Text="-c" FontFamily="Consolas" />
+                        で起動するとき、直前の会話をどう引き継ぐかです。長く大きく育った会話ではClaude Code側が確認画面を出して入力待ちで止まってしまうため、ここで選んだほうをランチャーが代わりに答えます。
+                    </TextBlock>
+
+                    <ComboBox ItemsSource="{Binding ResumeModeOptions}" DisplayMemberPath="Label"
+                              SelectedValuePath="Value" SelectedValue="{Binding ResumeMode}"
+                              HorizontalAlignment="Left" MinWidth="280" Margin="0,0,0,8" />
+
+                    <TextBlock Text="{Binding ResumeModeDetail}" TextWrapping="Wrap" FontSize="11" Opacity="0.45" />
+                </StackPanel>
+            </ui:Card>
+
+            <ui:Card Margin="0,0,0,16">
                 <Grid Margin="4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
