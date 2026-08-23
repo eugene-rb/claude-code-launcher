@@ -13,7 +13,7 @@ public class TranscriptLimitWatcherTests
     public void Poll_NoProjectDirectory_ReturnsNull()
     {
         var root = Path.Combine(Path.GetTempPath(), "ClaudeLauncherTests_" + Guid.NewGuid().ToString("N"));
-        var watcher = new TranscriptLimitWatcher(root);
+        var watcher = new TranscriptLimitWatcher(new ClaudeTranscriptSource(root));
         watcher.Reset(DateTimeOffset.Now);
 
         Assert.Null(watcher.Poll(WorkingDirectory));
@@ -31,7 +31,7 @@ public class TranscriptLimitWatcherTests
             var startedAt = DateTimeOffset.Now.AddMinutes(-1);
             File.WriteAllText(transcript, RateLimitLine("2026-08-19T15:42:19.927Z", "You've hit your session limit \\u00b7 resets 3:30am (Asia/Tokyo)") + "\n");
 
-            var watcher = new TranscriptLimitWatcher(root);
+            var watcher = new TranscriptLimitWatcher(new ClaudeTranscriptSource(root));
             watcher.Reset(startedAt);
 
             var result = watcher.Poll(WorkingDirectory);
@@ -56,7 +56,7 @@ public class TranscriptLimitWatcherTests
             var startedAt = DateTimeOffset.Now.AddMinutes(-1);
             File.WriteAllText(transcript, RateLimitLine("2026-08-19T15:42:19.927Z", "You've hit your session limit \\u00b7 resets 3:30am (Asia/Tokyo)") + "\n");
 
-            var watcher = new TranscriptLimitWatcher(root);
+            var watcher = new TranscriptLimitWatcher(new ClaudeTranscriptSource(root));
             watcher.Reset(startedAt);
 
             Assert.NotNull(watcher.Poll(WorkingDirectory));
@@ -83,7 +83,7 @@ public class TranscriptLimitWatcherTests
             // No trailing newline yet - the line is "still being written".
             File.WriteAllText(transcript, line);
 
-            var watcher = new TranscriptLimitWatcher(root);
+            var watcher = new TranscriptLimitWatcher(new ClaudeTranscriptSource(root));
             watcher.Reset(startedAt);
 
             Assert.Null(watcher.Poll(WorkingDirectory));

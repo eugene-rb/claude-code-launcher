@@ -59,4 +59,53 @@ public class AppSettingsStoreTests
             Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
         }
     }
+
+    [Fact]
+    public void Load_SettingsWrittenBeforeAgentSettingsExisted_MigratesClaudeCodeFromLegacyFields()
+    {
+        var path = CreateTempSettingsPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        try
+        {
+            File.WriteAllText(path, """
+                {
+                  "DefaultExecutable": "claude",
+                  "DefaultArguments": "--model sonnet"
+                }
+                """);
+
+            var settings = new AppSettingsStore(path).Load();
+
+            Assert.Equal(4, settings.AgentSettings.Count);
+            Assert.Equal("claude", settings.AgentSettings[AgentKind.ClaudeCode].Executable);
+            Assert.Equal("--model sonnet", settings.AgentSettings[AgentKind.ClaudeCode].Arguments);
+            Assert.Equal("codex", settings.AgentSettings[AgentKind.CodexCli].Executable);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_AgentSettingsAlreadyPopulated_IsNotOverwrittenByMigration()
+    {
+        var path = CreateTempSettingsPath();
+        try
+        {
+            var store = new AppSettingsStore(path);
+            var settings = new AppSettings();
+            settings.AgentSettings[AgentKind.ClaudeCode] = new AgentExecutionSettings { Executable = "custom-claude", Arguments = "--foo" };
+            store.Save(settings);
+
+            var reloaded = new AppSettingsStore(path).Load();
+
+            Assert.Equal("custom-claude", reloaded.AgentSettings[AgentKind.ClaudeCode].Executable);
+            Assert.Single(reloaded.AgentSettings);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
 }

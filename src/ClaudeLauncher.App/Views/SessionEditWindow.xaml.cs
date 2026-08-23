@@ -43,6 +43,9 @@ public partial class SessionEditWindow : FluentWindow
         NameTextBox.Text = profile.Name;
         WorkingDirectoryTextBox.Text = profile.WorkingDirectory;
 
+        AgentKindComboBox.ItemsSource = AgentCatalog.All;
+        AgentKindComboBox.SelectedValue = profile.AgentKind;
+
         BuildAccentSwatches();
         InitializeScheduleControls(profile);
     }
@@ -223,6 +226,7 @@ public partial class SessionEditWindow : FluentWindow
 
         _profile.Name = name;
         _profile.WorkingDirectory = workingDirectory;
+        _profile.AgentKind = AgentKindComboBox.SelectedValue is AgentKind selectedAgent ? selectedAgent : AgentKind.ClaudeCode;
         _profile.AccentColorHex = _selectedAccentHex;
         _profile.ScheduleEnabled = scheduleEnabled;
         _profile.Repeat = repeat;

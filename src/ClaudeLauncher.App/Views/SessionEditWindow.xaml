@@ -36,6 +36,12 @@
                 <ui:Button Grid.Column="1" Content="参照..." Click="Browse_Click" />
             </Grid>
 
+            <TextBlock Text="使用するAI" FontSize="12" Opacity="0.7" Margin="0,0,0,4" />
+            <ComboBox x:Name="AgentKindComboBox" Margin="0,0,0,4" HorizontalAlignment="Left" MinWidth="220"
+                      DisplayMemberPath="DisplayName" SelectedValuePath="Kind" />
+            <TextBlock Text="このプロジェクトの「起動」「続きから」ボタンが使うAIです。起動時だけ別のAIに切り替えることもできます。"
+                       FontSize="11" Opacity="0.45" Margin="0,0,0,16" />
+
             <TextBlock Text="アクセントカラー" FontSize="12" Opacity="0.7" Margin="0,0,0,8" />
             <StackPanel x:Name="AccentColorPanel" Orientation="Horizontal" Margin="0,0,0,16" />
 

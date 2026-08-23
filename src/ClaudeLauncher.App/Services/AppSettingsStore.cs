@@ -26,11 +26,35 @@ public sealed class AppSettingsStore
     {
         if (!File.Exists(_filePath))
         {
-            return new AppSettings();
+            return MigrateAgentSettings(new AppSettings());
         }
 
         var json = File.ReadAllText(_filePath);
-        return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+        var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+        return MigrateAgentSettings(settings);
+    }
+
+    /// <summary>Fills <see cref="AppSettings.AgentSettings"/> from <see cref="AgentCatalog"/>'s
+    /// defaults the first time it's loaded after this field was introduced (empty dictionary), seeding
+    /// Claude Code's entry from the legacy <see cref="AppSettings.DefaultExecutable"/>/
+    /// <see cref="AppSettings.DefaultArguments"/> instead of the catalog default so a user's existing
+    /// customization survives the upgrade unchanged. A no-op once <see cref="AppSettings.AgentSettings"/>
+    /// has been populated and saved once.</summary>
+    private static AppSettings MigrateAgentSettings(AppSettings settings)
+    {
+        if (settings.AgentSettings.Count > 0)
+        {
+            return settings;
+        }
+
+        foreach (var agent in AgentCatalog.All)
+        {
+            settings.AgentSettings[agent.Kind] = agent.Kind == AgentKind.ClaudeCode
+                ? new AgentExecutionSettings { Executable = settings.DefaultExecutable, Arguments = settings.DefaultArguments }
+                : new AgentExecutionSettings { Executable = agent.DefaultExecutable, Arguments = agent.DefaultArguments };
+        }
+
+        return settings;
     }
 
     public void Save(AppSettings settings)

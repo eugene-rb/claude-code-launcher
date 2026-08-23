@@ -12,8 +12,8 @@ namespace ClaudeLauncher.App.ViewModels;
 /// <summary>Wraps one <see cref="SessionProfile"/> with its live running state and start/stop commands.
 /// Display properties mirror the profile so edits (via <see cref="ApplyProfile"/>) refresh bound UI.
 /// The executable and launch arguments are not part of the profile - every session launches with the
-/// app-wide default in <see cref="SettingsViewModel"/> unless the user picks a one-off override via
-/// <see cref="StartCustomCommand"/>.</summary>
+/// per-agent default in <see cref="SettingsViewModel"/> for <see cref="SessionProfile.AgentKind"/>
+/// unless the user picks a one-off AI/arguments override via <see cref="StartCustomCommand"/>.</summary>
 public partial class SessionItemViewModel : ObservableObject
 {
     /// <summary>How stale a project's own transcript may be before its activity badge is hidden, for
@@ -30,7 +30,7 @@ public partial class SessionItemViewModel : ObservableObject
 
     private readonly ProcessLauncherService _launcher;
     private readonly SettingsViewModel _settings;
-    private readonly TranscriptLimitWatcher _limitWatcher = new();
+    private TranscriptLimitWatcher _limitWatcher = new(AgentTranscriptSourceRegistry.Get(AgentKind.ClaudeCode));
     private Process? _process;
 
     public SessionProfile Profile { get; private set; }
@@ -43,6 +43,11 @@ public partial class SessionItemViewModel : ObservableObject
 
     [ObservableProperty]
     private string accentColorHex;
+
+    /// <summary>Display name of <see cref="SessionProfile.AgentKind"/> (see <see cref="AgentCatalog"/>),
+    /// shown as a badge on the dashboard card.</summary>
+    [ObservableProperty]
+    private string agentDisplayName;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
@@ -75,20 +80,34 @@ public partial class SessionItemViewModel : ObservableObject
     [ObservableProperty]
     private bool isCustomLaunchOpen;
 
-    /// <summary>Editable text in the custom-launch dropdown. Pre-filled from the app-wide default each
-    /// time the dropdown opens; never persisted anywhere - a one-off override for a single launch.</summary>
+    /// <summary>Editable text in the custom-launch dropdown. Pre-filled from the selected AI's default
+    /// each time the dropdown opens (or its AI selection changes); never persisted anywhere - a one-off
+    /// override for a single launch.</summary>
     [ObservableProperty]
     private string customLaunchArguments = string.Empty;
+
+    /// <summary>AI selected in the custom-launch dropdown. Pre-filled from <see cref="Profile"/>'s own
+    /// <see cref="SessionProfile.AgentKind"/> each time the dropdown opens; never persisted anywhere -
+    /// a one-off override for a single launch. The project's own <see cref="SessionProfile.AgentKind"/>
+    /// (set via the project edit dialog) is what the plain "起動"/"続きから" buttons always use.</summary>
+    [ObservableProperty]
+    private AgentKind customLaunchAgentKind;
+
+    /// <summary>The four AI options offered by the custom-launch dropdown and the project edit dialog.</summary>
+    public IReadOnlyList<AgentDefinition> AgentOptions => AgentCatalog.All;
 
     partial void OnIsCustomLaunchOpenChanged(bool value)
     {
         if (value)
         {
-            // Pre-fill from the current default each time it opens, so it's a starting point to tweak
-            // rather than whatever was left over (possibly blank) from the last time it was open.
-            CustomLaunchArguments = _settings.DefaultArguments;
+            // Pre-fill from the project's own AI/arguments each time it opens, so it's a starting
+            // point to tweak rather than whatever was left over from the last time it was open.
+            CustomLaunchAgentKind = Profile.AgentKind;
+            CustomLaunchArguments = _settings.GetArguments(Profile.AgentKind);
         }
     }
+
+    partial void OnCustomLaunchAgentKindChanged(AgentKind value) => CustomLaunchArguments = _settings.GetArguments(value);
 
     public SessionItemViewModel(SessionProfile profile, ProcessLauncherService launcher, SettingsViewModel settings)
     {
@@ -98,7 +117,9 @@ public partial class SessionItemViewModel : ObservableObject
         name = profile.Name;
         workingDirectory = profile.WorkingDirectory;
         accentColorHex = profile.AccentColorHex;
-        customLaunchArguments = settings.DefaultArguments;
+        agentDisplayName = AgentCatalog.Get(profile.AgentKind).DisplayName;
+        customLaunchAgentKind = profile.AgentKind;
+        customLaunchArguments = settings.GetArguments(profile.AgentKind);
         RefreshScheduleSummary();
         RefreshLimitStatusSummary();
         RefreshActivityState(StatusMarkerStore.ReadFresh(StatusMarkerStore.GetDefaultDirectory(), StatusMarkerStore.DefaultMaxAge, DateTimeOffset.Now));
@@ -110,6 +131,7 @@ public partial class SessionItemViewModel : ObservableObject
         Name = updated.Name;
         WorkingDirectory = updated.WorkingDirectory;
         AccentColorHex = updated.AccentColorHex;
+        AgentDisplayName = AgentCatalog.Get(updated.AgentKind).DisplayName;
         RefreshScheduleSummary();
         RefreshLimitStatusSummary();
     }
@@ -155,12 +177,15 @@ public partial class SessionItemViewModel : ObservableObject
     }
 
     /// <summary>Called periodically by <see cref="MainViewModel"/>'s schedule timer. Polls this
-    /// session's own Claude Code transcript for a newly-appeared usage-limit event; on a match,
-    /// schedules an auto-resume 5 minutes after the parsed reset time. No-op unless the session is
-    /// running and the app-wide <see cref="AppSettings.AutoResumeOnLimitEnabled"/> is on.</summary>
+    /// session's own transcript for a newly-appeared usage-limit event; on a match, schedules an
+    /// auto-resume 5 minutes after the parsed reset time. No-op unless the session is running, the
+    /// app-wide <see cref="AppSettings.AutoResumeOnLimitEnabled"/> is on, and
+    /// <see cref="IAgentTranscriptSource.SupportsUsageLimitAutoResume"/> is true for this project's
+    /// agent - Claude Code only, for now (see <see cref="AgentCatalog"/>).</summary>
     public bool TryDetectUsageLimit()
     {
-        if (!IsRunning || !_settings.AutoResumeOnLimitEnabled)
+        if (!IsRunning || !_settings.AutoResumeOnLimitEnabled
+            || !AgentTranscriptSourceRegistry.Get(Profile.AgentKind).SupportsUsageLimitAutoResume)
         {
             return false;
         }
@@ -277,10 +302,13 @@ public partial class SessionItemViewModel : ObservableObject
     /// <see cref="MainViewModel"/> reads the marker directory once per tick, not once per project.</summary>
     public void RefreshActivityState(IReadOnlyList<StatusMarker> freshMarkers)
     {
-        var projectDir = Path.Combine(ClaudeProjectPathResolver.GetProjectsRoot(), ClaudeProjectPathResolver.ToProjectDirName(Profile.WorkingDirectory));
-        var file = TranscriptLimitWatcher.PickMostRecentTranscriptFile(projectDir);
+        var source = AgentTranscriptSourceRegistry.Get(Profile.AgentKind);
+        var file = source.FindMostRecentTranscriptFile(Profile.WorkingDirectory);
 
-        var hasFreshMarker = freshMarkers.Any(m => WorkingDirectoryComparer.AreSame(m.Cwd, Profile.WorkingDirectory));
+        // The "awaiting your approval" marker comes from a Claude Code-only hook, so it's only ever
+        // meaningful for a Claude Code project - other agents have no equivalent hook to write one.
+        var hasFreshMarker = Profile.AgentKind == AgentKind.ClaudeCode
+            && freshMarkers.Any(m => WorkingDirectoryComparer.AreSame(m.Cwd, Profile.WorkingDirectory));
 
         if (file is null)
         {
@@ -305,7 +333,7 @@ public partial class SessionItemViewModel : ObservableObject
         // Read once and hand the same text to both the classifier and the preview extractor, instead
         // of two separate tail reads of the same file every poll.
         var text = TranscriptTailFile.ReadTail(file);
-        PreviewText = text is null ? null : TranscriptPreviewReader.ExtractPreview(text);
+        PreviewText = text is null ? null : source.ExtractPreview(text);
 
         if (hasFreshMarker)
         {
@@ -316,7 +344,7 @@ public partial class SessionItemViewModel : ObservableObject
             return;
         }
 
-        ActivityState = (text is null ? null : TranscriptActivityClassifier.ClassifyText(text)) ?? ProjectActivityState.Unknown;
+        ActivityState = (text is null ? null : source.Classify(text)) ?? ProjectActivityState.Unknown;
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -329,23 +357,27 @@ public partial class SessionItemViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStart))]
     private void StartResume() => Launch(resume: true);
 
-    /// <summary>Launches with <see cref="CustomLaunchArguments"/> instead of the app-wide default -
-    /// a one-off override, never written back to <see cref="SettingsViewModel"/>.</summary>
+    /// <summary>Launches with <see cref="CustomLaunchAgentKind"/>/<see cref="CustomLaunchArguments"/>
+    /// instead of the project's own AI/default arguments - a one-off override, never written back to
+    /// <see cref="Profile"/> or <see cref="SettingsViewModel"/>.</summary>
     [RelayCommand(CanExecute = nameof(CanStart))]
     private void StartCustom()
     {
-        Launch(resume: false, argumentsOverride: CustomLaunchArguments);
+        Launch(resume: false, argumentsOverride: CustomLaunchArguments, agentKindOverride: CustomLaunchAgentKind);
         IsCustomLaunchOpen = false;
     }
 
-    private void Launch(bool resume, string? argumentsOverride = null)
+    private void Launch(bool resume, string? argumentsOverride = null, AgentKind? agentKindOverride = null)
     {
-        var argumentsText = argumentsOverride ?? _settings.DefaultArguments;
-        _process = _launcher.Start(Profile, _settings.DefaultExecutable, argumentsText, resume, _settings.ResumeMode);
+        var agentKind = agentKindOverride ?? Profile.AgentKind;
+        var argumentsText = argumentsOverride ?? _settings.GetArguments(agentKind);
+        var executable = _settings.GetExecutable(agentKind);
+        _process = _launcher.Start(Profile, agentKind, executable, argumentsText, resume, _settings.ResumeMode);
         _process.Exited += OnProcessExited;
         ProcessId = _process.Id;
         IsRunning = true;
         Profile.LastLaunchedAt = DateTimeOffset.Now;
+        _limitWatcher = new TranscriptLimitWatcher(AgentTranscriptSourceRegistry.Get(agentKind));
         _limitWatcher.Reset(DateTimeOffset.Now);
     }
 

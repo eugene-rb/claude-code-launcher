@@ -38,19 +38,20 @@ public sealed class ProcessLauncherService
 
     private static string ToPowerShellLiteral(string value) => "'" + value.Replace("'", "''") + "'";
 
-    /// <summary>Tokenizes the profile's configured arguments and, when resuming, appends `-c` to
-    /// continue the most recent conversation in the working directory (no session ID needed, unlike
-    /// `-r/--resume` which opens an interactive picker when given no value and would hang unattended).
-    /// Any existing `-r`/`--resume`/`-c`/`--continue` already in the profile's own arguments (e.g. a
-    /// user-configured `--resume`) is stripped first so the two can't collide on the same command
-    /// line - a bare trailing `--resume` with no session ID would otherwise still open that picker
-    /// and hang the unattended resume.
-    /// <para><see cref="ResumeMode.CompactFirst"/> additionally appends `/compact` as the CLI's
-    /// positional prompt argument, which the resumed session runs as its first input - the same
-    /// compaction the chooser's recommended branch performs. A profile that already supplies its own
-    /// positional prompt would end up with two, so the setting is documented as applying to the
-    /// launcher's own resume rather than to arbitrary custom arguments.</para></summary>
+    /// <summary>Tokenizes the profile's configured arguments and, when resuming, composes
+    /// <paramref name="agent"/>'s <see cref="AgentDefinition.ResumeArgumentTemplate"/> around them (a
+    /// trailing continuation flag for most CLIs, a leading subcommand for Codex's `resume --last`).
+    /// Any flag in <see cref="AgentDefinition.ResumeFlagsToStrip"/> /
+    /// <see cref="AgentDefinition.ResumeFlagsToStripWithOptionalValue"/> already in the profile's own
+    /// arguments (e.g. a user-configured `--resume`) is stripped first so it can't collide with the
+    /// template - a bare trailing `--resume` with no session ID would otherwise still open an
+    /// interactive picker and hang an unattended resume.
+    /// <para><see cref="ResumeMode.CompactFirst"/> additionally appends
+    /// <see cref="AgentDefinition.CompactResumeExtraToken"/> (Claude Code's `/compact`) as the CLI's
+    /// positional prompt argument, which the resumed session runs as its first input. Agents with no
+    /// such token (everyone but Claude Code) ignore this mode entirely.</para></summary>
     public static IReadOnlyList<string> BuildLaunchArguments(
+        AgentDefinition agent,
         string profileArguments,
         bool resume,
         ResumeMode resumeMode = ResumeMode.FullSession)
@@ -61,15 +62,29 @@ public sealed class ProcessLauncherService
             return arguments;
         }
 
+        var filtered = StripResumeFlags(arguments, agent);
+        var composed = ComposeResumeTemplate(agent.ResumeArgumentTemplate, filtered);
+
+        if (resumeMode == ResumeMode.CompactFirst && agent.CompactResumeExtraToken is { } compactToken)
+        {
+            composed = [.. composed, compactToken];
+        }
+
+        return composed;
+    }
+
+    private static List<string> StripResumeFlags(IReadOnlyList<string> arguments, AgentDefinition agent)
+    {
         var filtered = new List<string>();
         for (var i = 0; i < arguments.Count; i++)
         {
             var token = arguments[i];
-            if (token is "-r" or "--resume" or "-c" or "--continue")
+
+            if (agent.ResumeFlagsToStripWithOptionalValue.Contains(token))
             {
-                // -r/--resume optionally takes a session-ID value; drop it too so it isn't left
+                // May optionally take a value (e.g. a session ID); drop it too so it isn't left
                 // behind as a stray positional prompt argument.
-                if (token is "-r" or "--resume" && i + 1 < arguments.Count && !arguments[i + 1].StartsWith('-'))
+                if (i + 1 < arguments.Count && !arguments[i + 1].StartsWith('-'))
                 {
                     i++;
                 }
@@ -77,56 +92,68 @@ public sealed class ProcessLauncherService
                 continue;
             }
 
-            filtered.Add(token);
-        }
+            if (agent.ResumeFlagsToStrip.Contains(token))
+            {
+                continue;
+            }
 
-        filtered.Add("-c");
-        if (resumeMode == ResumeMode.CompactFirst)
-        {
-            filtered.Add("/compact");
+            filtered.Add(token);
         }
 
         return filtered;
     }
 
-    /// <summary>Claude Code shows a blocking "This session is Xh Ym old and N tokens / Resume from
-    /// summary?" chooser before it will continue an old, large conversation. That chooser waits for a
-    /// keypress, so an unattended auto-resume just sits on it and never reaches the CLI. The CLI skips
-    /// the chooser entirely when the session is below both of these thresholds, so a resume launch runs
-    /// with them raised out of reach - a year of wall-clock and a token count no transcript reaches.
-    /// The effect is that the auto-resume takes the "resume the full session as-is" branch, which is
-    /// what plain `-c` did before the chooser existed. Values are set only for the launched process
-    /// (never machine-wide) and only when resuming, so a fresh launch is untouched. Which branch of the
-    /// chooser the launcher then takes on the user's behalf is <see cref="ResumeMode"/>'s job.
-    /// Both variables are parsed as plain integers by the CLI, so keep them well inside int range.</summary>
-    public static IReadOnlyDictionary<string, string> BuildResumeEnvironment(bool resume)
+    /// <summary>Splices <paramref name="filteredArgs"/> into <paramref name="template"/> at its single
+    /// <c>"{args}"</c> placeholder entry, leaving every other template token as a literal.</summary>
+    private static List<string> ComposeResumeTemplate(IReadOnlyList<string> template, IReadOnlyList<string> filteredArgs)
     {
-        if (!resume)
+        var result = new List<string>();
+        foreach (var token in template)
         {
-            return new Dictionary<string, string>();
+            if (token == "{args}")
+            {
+                result.AddRange(filteredArgs);
+            }
+            else
+            {
+                result.Add(token);
+            }
         }
 
-        return new Dictionary<string, string>
-        {
-            ["CLAUDE_CODE_RESUME_THRESHOLD_MINUTES"] = "525600",
-            ["CLAUDE_CODE_RESUME_TOKEN_THRESHOLD"] = "999999999",
-        };
+        return result;
     }
+
+    /// <summary>Returns <paramref name="agent"/>'s <see cref="AgentDefinition.ResumeEnvironmentVariables"/>
+    /// when resuming, empty otherwise. Claude Code shows a blocking "This session is Xh Ym old and N
+    /// tokens / Resume from summary?" chooser before it will continue an old, large conversation; that
+    /// chooser waits for a keypress, so an unattended auto-resume just sits on it and never reaches the
+    /// CLI. Claude Code skips the chooser entirely when the session is below both of its threshold env
+    /// vars, so a resume launch runs with them raised out of reach - a year of wall-clock and a token
+    /// count no transcript reaches - taking the "resume the full session as-is" branch, what plain `-c`
+    /// did before the chooser existed. No other agent is known to have an equivalent chooser, so their
+    /// definitions carry no variables here. Values are set only for the launched process (never
+    /// machine-wide) and only when resuming, so a fresh launch is untouched.</summary>
+    public static IReadOnlyDictionary<string, string> BuildResumeEnvironment(AgentDefinition agent, bool resume) =>
+        resume ? new Dictionary<string, string>(agent.ResumeEnvironmentVariables) : new Dictionary<string, string>();
 
     /// <summary>Starts the session's PowerShell window. The caller owns the returned process (keep a
     /// reference alive and subscribe to <see cref="Process.Exited"/> as needed). <paramref name="executable"/>
-    /// and <paramref name="argumentsText"/> are the app-wide default from <see cref="Models.AppSettings"/>
-    /// unless the caller is launching with a one-off override. Pass <paramref name="resume"/> to
-    /// continue the most recent conversation instead of a fresh one, and <paramref name="resumeMode"/>
-    /// to say whether that conversation carries on in full or from a summary.</summary>
+    /// and <paramref name="argumentsText"/> are the per-agent default from <see cref="Models.AppSettings"/>
+    /// unless the caller is launching with a one-off override; <paramref name="agentKind"/> selects
+    /// which <see cref="AgentDefinition"/> (see <see cref="AgentCatalog"/>) governs resume syntax. Pass
+    /// <paramref name="resume"/> to continue the most recent conversation instead of a fresh one, and
+    /// <paramref name="resumeMode"/> to say whether that conversation carries on in full or from a
+    /// summary (Claude Code only - every other agent ignores this mode).</summary>
     public Process Start(
         SessionProfile profile,
+        AgentKind agentKind,
         string executable,
         string argumentsText,
         bool resume = false,
         ResumeMode resumeMode = ResumeMode.FullSession)
     {
-        var arguments = BuildLaunchArguments(argumentsText, resume, resumeMode);
+        var agent = AgentCatalog.Get(agentKind);
+        var arguments = BuildLaunchArguments(agent, argumentsText, resume, resumeMode);
         var script = BuildScript(profile.Name, executable, arguments);
         var encoded = EncodeCommand(script);
 
@@ -138,7 +165,7 @@ public sealed class ProcessLauncherService
             CreateNoWindow = false,
         };
 
-        foreach (var (name, value) in BuildResumeEnvironment(resume))
+        foreach (var (name, value) in BuildResumeEnvironment(agent, resume))
         {
             startInfo.Environment[name] = value;
         }

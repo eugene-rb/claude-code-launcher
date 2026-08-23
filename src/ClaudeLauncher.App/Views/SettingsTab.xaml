@@ -15,16 +15,39 @@
 
             <ui:Card Margin="0,0,0,16">
                 <StackPanel Margin="4">
-                    <TextBlock Text="既定の起動コマンド" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
-                    <TextBlock Text="新規プロジェクトを「起動」するとき、標準で使われる実行コマンドとオプションです。個別のプロジェクトごとに変えたい場合は、起動ボタン横のドロップダウンからその都度指定できます。"
+                    <TextBlock Text="AIごとの起動コマンド" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
+                    <TextBlock Text="プロジェクトが各AIで「起動」するとき、標準で使われる実行コマンドとオプションです。実行ファイル名や再開の挙動はCLIのバージョンによって変わることがあるため、ここで自由に書き換えられます。個別のプロジェクトだけ変えたい場合は、起動ボタン横のドロップダウンからその都度指定できます。"
                                FontSize="12" Opacity="0.6" TextWrapping="Wrap" Margin="0,0,0,16" />
 
-                    <TextBlock Text="実行コマンド" FontSize="12" Opacity="0.7" Margin="0,0,0,4" />
-                    <TextBox Text="{Binding DefaultExecutable, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16" />
+                    <ItemsControl ItemsSource="{Binding AgentRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,0,0,16">
+                                    <TextBlock Text="{Binding DisplayName}" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="140" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
 
-                    <TextBlock Text="起動オプション" FontSize="12" Opacity="0.7" Margin="0,0,0,4" />
-                    <TextBox Text="{Binding DefaultArguments, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,4" />
-                    <TextBlock Text="例: --model sonnet" FontSize="11" Opacity="0.45" />
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="実行コマンド" FontSize="12" Opacity="0.7"
+                                                   VerticalAlignment="Center" Margin="0,0,8,6" />
+                                        <TextBox Grid.Row="0" Grid.Column="1" Margin="0,0,0,6"
+                                                 Text="{Binding Executable, UpdateSourceTrigger=PropertyChanged}" />
+
+                                        <TextBlock Grid.Row="1" Grid.Column="0" Text="起動オプション" FontSize="12" Opacity="0.7"
+                                                   VerticalAlignment="Center" />
+                                        <TextBox Grid.Row="1" Grid.Column="1"
+                                                 Text="{Binding Arguments, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </ui:Card>
 
@@ -40,7 +63,7 @@
                         <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.6">
                             応答の途中で利用上限に達したことを検知したら、リセット時刻の5分後に自動で
                             <Run Text="-c" FontFamily="Consolas" />
-                            (直前の会話を継続)で起動し直します。全プロジェクトに適用されます。アプリを起動している間(タスクバーに常駐中も含む)のみ有効です。
+                            (直前の会話を継続)で起動し直します。Claude Code のプロジェクトにのみ適用されます(他のAIには利用上限イベントの検知手段がまだありません)。アプリを起動している間(タスクバーに常駐中も含む)のみ有効です。
                         </TextBlock>
                     </StackPanel>
 
@@ -62,7 +85,9 @@
                               SelectedValuePath="Value" SelectedValue="{Binding ResumeMode}"
                               HorizontalAlignment="Left" MinWidth="280" Margin="0,0,0,8" />
 
-                    <TextBlock Text="{Binding ResumeModeDetail}" TextWrapping="Wrap" FontSize="11" Opacity="0.45" />
+                    <TextBlock Text="{Binding ResumeModeDetail}" TextWrapping="Wrap" FontSize="11" Opacity="0.45" Margin="0,0,0,4" />
+                    <TextBlock Text="Claude Code のプロジェクトにのみ適用されます。他のAIには /compact や再開確認の抑制に相当する仕組みがありません。"
+                               TextWrapping="Wrap" FontSize="11" Opacity="0.45" />
                 </StackPanel>
             </ui:Card>
 

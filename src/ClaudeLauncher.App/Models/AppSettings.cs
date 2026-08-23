@@ -4,9 +4,18 @@ namespace ClaudeLauncher.App.Models;
 /// which holds per-project state like the working directory and schedule).</summary>
 public sealed class AppSettings
 {
+    /// <summary>Legacy pre-multi-AI fields, kept only so <see cref="Services.AppSettingsStore.Load"/>
+    /// can migrate an existing settings.json's customized executable/arguments into
+    /// <see cref="AgentSettings"/>'s Claude Code entry the first time it's loaded after upgrading.
+    /// Not read anywhere else - use <see cref="AgentSettings"/> instead.</summary>
     public string DefaultExecutable { get; set; } = "claude";
 
     public string DefaultArguments { get; set; } = string.Empty;
+
+    /// <summary>Per-agent executable/default-arguments, editable in the 設定 tab. Populated with
+    /// <see cref="Services.AgentCatalog"/>'s defaults (migrated from <see cref="DefaultExecutable"/>/
+    /// <see cref="DefaultArguments"/> for Claude Code) the first time settings are loaded.</summary>
+    public Dictionary<AgentKind, AgentExecutionSettings> AgentSettings { get; set; } = new();
 
     /// <summary>When true, a running session's transcript is polled for a usage-limit ("rate_limit")
     /// event; on detection the session is auto-relaunched with `-c` 5 minutes after the reset time.

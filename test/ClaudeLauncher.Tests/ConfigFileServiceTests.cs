@@ -24,6 +24,7 @@ public class ConfigFileServiceTests
 
     [Theory]
     [InlineData("project-claude-md", "CLAUDE.md")]
+    [InlineData("project-agents-md", "AGENTS.md")]
     [InlineData("project-settings-json", "settings.json")]
     [InlineData("project-settings-local-json", "settings.local.json")]
     public void ResolveProjectPath_CombinesProjectDirectoryWithRelativePath(string key, string expectedFileName)

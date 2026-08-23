@@ -94,7 +94,37 @@ public partial class ConfigFilesViewModel : ObservableObject
         SelectedEntry.RefreshExists();
         _loadedContent = Content;
         OnPropertyChanged(nameof(IsDirty));
-        StatusMessage = "保存しました。";
+
+        // CLAUDE.md is the canonical project instructions file in this launcher; mirroring it into
+        // AGENTS.md one-way keeps Codex CLI/Kimi Code CLI/Antigravity CLI (which all read AGENTS.md)
+        // in sync without a separate sync step. AGENTS.md itself stays independently editable/savable
+        // for AI-specific customization - that edit simply gets overwritten the next time CLAUDE.md is
+        // saved, which is called out next to the CLAUDE.md editor in the view.
+        if (SelectedEntry.Definition.Key == ConfigFileService.ClaudeMdKey)
+        {
+            MirrorToAgentsMd(Content);
+            StatusMessage = "保存しました。AGENTS.md(他のAI用)にもコピーしました。";
+        }
+        else
+        {
+            StatusMessage = "保存しました。";
+        }
+    }
+
+    /// <summary>Writes CLAUDE.md's just-saved content to the same project's AGENTS.md path and
+    /// refreshes that entry's <see cref="ConfigFileEntryViewModel.Exists"/> flag. Only called while
+    /// <see cref="SelectedEntry"/> is the CLAUDE.md entry, so AGENTS.md is never the one currently open
+    /// in the editor at this point - no need to refresh <see cref="Content"/>.</summary>
+    private void MirrorToAgentsMd(string content)
+    {
+        var agentsEntry = ProjectEntries.FirstOrDefault(e => e.Definition.Key == ConfigFileService.AgentsMdKey);
+        if (agentsEntry is null)
+        {
+            return;
+        }
+
+        ConfigFileService.Save(agentsEntry.ResolvedPath, content);
+        agentsEntry.RefreshExists();
     }
 
     private bool CanSave() => SelectedEntry is not null;

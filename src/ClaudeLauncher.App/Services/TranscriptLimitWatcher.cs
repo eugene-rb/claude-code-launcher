@@ -3,14 +3,17 @@ using System.Text;
 
 namespace ClaudeLauncher.App.Services;
 
-/// <summary>Tails a running session's Claude Code transcript (~/.claude/projects/&lt;hash of cwd&gt;/*.jsonl)
-/// for a "rate_limit" event, one instance per running <see cref="ViewModels.SessionItemViewModel"/>.
-/// Tracks its own read offset so a poll only scans lines appended since the previous call — a matched
-/// line is therefore only ever seen once, and an unterminated trailing line is left for the next poll
-/// rather than mis-parsed.</summary>
-public sealed class TranscriptLimitWatcher(string? projectsRootOverride = null)
+/// <summary>Tails a running session's transcript for a usage-limit event, one instance per running
+/// <see cref="ViewModels.SessionItemViewModel"/>. Which CLI's transcript format and event shape to use
+/// is delegated entirely to the injected <see cref="IAgentTranscriptSource"/> - only agents with
+/// <see cref="IAgentTranscriptSource.SupportsUsageLimitAutoResume"/> true ever return a non-null event
+/// from <see cref="IAgentTranscriptSource.TryParseUsageLimitEvent"/>, so this class behaves as a no-op
+/// poller for every agent but Claude Code. Tracks its own read offset so a poll only scans lines
+/// appended since the previous call — a matched line is therefore only ever seen once, and an
+/// unterminated trailing line is left for the next poll rather than mis-parsed.</summary>
+public sealed class TranscriptLimitWatcher(IAgentTranscriptSource source)
 {
-    private readonly string _projectsRoot = projectsRootOverride ?? ClaudeProjectPathResolver.GetProjectsRoot();
+    private readonly IAgentTranscriptSource _source = source;
     private string? _watchedFilePath;
     private long _offset;
     private DateTimeOffset _processStartedAt;
@@ -23,13 +26,12 @@ public sealed class TranscriptLimitWatcher(string? projectsRootOverride = null)
         _processStartedAt = processStartedAt;
     }
 
-    /// <summary>Returns the reset time of the most recent newly-seen "rate_limit" event, or null if
+    /// <summary>Returns the reset time of the most recent newly-seen usage-limit event, or null if
     /// none was found since the last call (including when the transcript directory/file can't be
     /// located yet — e.g. the CLI hasn't written anything for this run).</summary>
     public DateTimeOffset? Poll(string workingDirectory)
     {
-        var projectDir = Path.Combine(_projectsRoot, ClaudeProjectPathResolver.ToProjectDirName(workingDirectory));
-        var file = PickActiveTranscriptFile(projectDir, _processStartedAt);
+        var file = _source.FindActiveTranscriptFile(workingDirectory, _processStartedAt);
         if (file is null)
         {
             return null;
@@ -75,7 +77,7 @@ public sealed class TranscriptLimitWatcher(string? projectsRootOverride = null)
                 continue;
             }
 
-            var parsed = UsageLimitEventParser.TryParseLine(line);
+            var parsed = _source.TryParseUsageLimitEvent(line);
             if (parsed is not null)
             {
                 found = parsed;

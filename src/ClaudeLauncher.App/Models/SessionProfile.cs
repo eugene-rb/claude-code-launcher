@@ -10,6 +10,10 @@ public sealed class SessionProfile
 
     public string AccentColorHex { get; set; } = "#0078D4";
 
+    /// <summary>Which CLI this project launches with. Defaults to <see cref="AgentKind.ClaudeCode"/>
+    /// (enum value 0) so profiles saved before this field existed keep working unchanged.</summary>
+    public AgentKind AgentKind { get; set; } = AgentKind.ClaudeCode;
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
     public DateTimeOffset? LastLaunchedAt { get; set; }
@@ -34,6 +38,7 @@ public sealed class SessionProfile
         Name = Name,
         WorkingDirectory = WorkingDirectory,
         AccentColorHex = AccentColorHex,
+        AgentKind = AgentKind,
         CreatedAt = CreatedAt,
         LastLaunchedAt = LastLaunchedAt,
         ScheduleEnabled = ScheduleEnabled,

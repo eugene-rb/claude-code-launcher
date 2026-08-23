@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using ClaudeLauncher.App.Models;
 using ClaudeLauncher.App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -17,11 +18,11 @@ public partial class SettingsViewModel : ObservableObject
     private readonly StartupRegistrationService _startupRegistration;
     private bool _loading;
 
-    [ObservableProperty]
-    private string defaultExecutable = "claude";
-
-    [ObservableProperty]
-    private string defaultArguments = string.Empty;
+    /// <summary>One editable row per <see cref="AgentCatalog"/> entry - the per-agent executable and
+    /// default launch arguments used unless a project/launch overrides them. Populated in the
+    /// constructor from <see cref="AppSettings.AgentSettings"/> (already migrated by
+    /// <see cref="AppSettingsStore.Load"/> if this is the first load after upgrading).</summary>
+    public ObservableCollection<AgentSettingsRowViewModel> AgentRows { get; } = [];
 
     [ObservableProperty]
     private bool autoResumeOnLimitEnabled;
@@ -67,17 +68,32 @@ public partial class SettingsViewModel : ObservableObject
 
         var settings = _store.Load();
         _loading = true;
-        DefaultExecutable = settings.DefaultExecutable;
-        DefaultArguments = settings.DefaultArguments;
+        foreach (var agent in AgentCatalog.All)
+        {
+            var current = settings.AgentSettings.TryGetValue(agent.Kind, out var existing)
+                ? existing
+                : new AgentExecutionSettings { Executable = agent.DefaultExecutable, Arguments = agent.DefaultArguments };
+            AgentRows.Add(new AgentSettingsRowViewModel(agent, current, Persist));
+        }
+
         AutoResumeOnLimitEnabled = settings.AutoResumeOnLimitEnabled;
         ResumeMode = settings.ResumeMode;
         StartWithWindowsEnabled = _startupRegistration.IsEnabled();
         _loading = false;
     }
 
-    partial void OnDefaultExecutableChanged(string value) => Persist();
+    /// <summary>Resolves the executable configured for <paramref name="kind"/> in <see cref="AgentRows"/>,
+    /// falling back to <see cref="AgentCatalog"/>'s default if the row is somehow missing or blank.</summary>
+    public string GetExecutable(AgentKind kind) =>
+        AgentRows.FirstOrDefault(r => r.Kind == kind)?.Executable is { Length: > 0 } exe
+            ? exe
+            : AgentCatalog.Get(kind).DefaultExecutable;
 
-    partial void OnDefaultArgumentsChanged(string value) => Persist();
+    /// <summary>Resolves the default launch arguments configured for <paramref name="kind"/> in
+    /// <see cref="AgentRows"/>, falling back to <see cref="AgentCatalog"/>'s default if the row is
+    /// somehow missing.</summary>
+    public string GetArguments(AgentKind kind) =>
+        AgentRows.FirstOrDefault(r => r.Kind == kind)?.Arguments ?? AgentCatalog.Get(kind).DefaultArguments;
 
     partial void OnAutoResumeOnLimitEnabledChanged(bool value) => Persist();
 
@@ -104,10 +120,25 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        var agentSettings = new Dictionary<AgentKind, AgentExecutionSettings>();
+        foreach (var row in AgentRows)
+        {
+            agentSettings[row.Kind] = new AgentExecutionSettings
+            {
+                Executable = string.IsNullOrWhiteSpace(row.Executable) ? AgentCatalog.Get(row.Kind).DefaultExecutable : row.Executable.Trim(),
+                Arguments = row.Arguments.Trim(),
+            };
+        }
+
+        // Legacy fields are no longer read by this app, but keeping them mirrored to the Claude Code
+        // row costs nothing and avoids stranding a downgrade on an old default.
+        var claudeSettings = agentSettings.GetValueOrDefault(AgentKind.ClaudeCode);
+
         _store.Save(new()
         {
-            DefaultExecutable = string.IsNullOrWhiteSpace(DefaultExecutable) ? "claude" : DefaultExecutable.Trim(),
-            DefaultArguments = DefaultArguments.Trim(),
+            DefaultExecutable = claudeSettings?.Executable ?? "claude",
+            DefaultArguments = claudeSettings?.Arguments ?? string.Empty,
+            AgentSettings = agentSettings,
             AutoResumeOnLimitEnabled = AutoResumeOnLimitEnabled,
             ResumeMode = ResumeMode,
         });
