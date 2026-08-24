@@ -42,6 +42,18 @@ if (-not $SkipPublish) {
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
 }
 
+# Guards against packing a stale publish\win-x64 (e.g. after a prior run with -SkipPublish, or a
+# publish that silently no-op'd) - vpk pack itself only trusts -packVersion, it never checks the
+# actual DLL, so a mismatch here would otherwise ship a release whose binaries don't match its
+# version number. Confirmed as the root cause of the 0.3.0 release (2026-08-24): sq.version said
+# 0.3.0 but the packaged DLL was still 0.2.1, so installed clients believed they were already
+# up to date and never re-checked.
+$publishedDllPath = Join-Path $publishDir 'ClaudeLauncher.App.dll'
+$publishedDllVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($publishedDllPath).FileVersion
+if (-not $publishedDllVersion.StartsWith($Version)) {
+    throw "publish\win-x64 is stale: ClaudeLauncher.App.dll is v$publishedDllVersion but packing v$Version. Re-run without -SkipPublish."
+}
+
 # --packTitle is kept ASCII-only: passing Japanese text through PowerShell 5.1 to a native exe's argv
 # mangled it into mojibake in the produced shortcut/uninstall-entry names (confirmed by inspecting the
 # actual .lnk filenames on disk, not just console output) - the in-app UI is unaffected, it's Japanese
