@@ -52,4 +52,15 @@ public static class ScheduleEvaluator
     /// of fired (see <see cref="AutoResumeStaleWindow"/>).</summary>
     public static bool IsAutoResumeStale(SessionProfile profile, DateTimeOffset now) =>
         profile.AutoResumeAt is { } at && now - at > AutoResumeStaleWindow;
+
+    /// <summary>True if a just-detected usage-limit reset time is still worth arming as
+    /// <see cref="SessionProfile.AutoResumeAt"/>. An auto-resume relaunch continues the same
+    /// conversation the usage limit interrupted, which - depending on the CLI - can mean the freshly
+    /// (re)started transcript watcher rescans the very rate-limit line that triggered the relaunch and
+    /// hands back the same, already-past reset time. Arming that again would satisfy
+    /// <see cref="ShouldAutoResume"/> on the very next check and relaunch a second time, then a third,
+    /// looping indefinitely instead of firing once. A reset time already at or before now is therefore
+    /// treated as an echo of a detection already acted on, not a new one.</summary>
+    public static bool ShouldArmAutoResume(DateTimeOffset candidateAutoResumeAt, DateTimeOffset now) =>
+        candidateAutoResumeAt > now;
 }

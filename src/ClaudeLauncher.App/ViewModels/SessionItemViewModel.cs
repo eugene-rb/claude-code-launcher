@@ -196,7 +196,15 @@ public partial class SessionItemViewModel : ObservableObject
             return false;
         }
 
-        Profile.AutoResumeAt = at + TimeSpan.FromMinutes(5);
+        var candidate = at + TimeSpan.FromMinutes(5);
+        if (!ScheduleEvaluator.ShouldArmAutoResume(candidate, DateTimeOffset.Now))
+        {
+            // Same reset time as an auto-resume already fired for this session - see
+            // ScheduleEvaluator.ShouldArmAutoResume for why this must not re-arm.
+            return false;
+        }
+
+        Profile.AutoResumeAt = candidate;
         RefreshLimitStatusSummary();
         return true;
     }

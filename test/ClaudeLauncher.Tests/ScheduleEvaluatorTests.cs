@@ -242,4 +242,34 @@ public class ScheduleEvaluatorTests
 
         Assert.True(ScheduleEvaluator.IsAutoResumeStale(profile, new DateTimeOffset(2026, 8, 20, 9, 0, 0, Offset)));
     }
+
+    [Fact]
+    public void ShouldArmAutoResume_CandidateInFuture_Arms()
+    {
+        var candidate = new DateTimeOffset(2026, 8, 19, 9, 0, 0, Offset);
+        var now = new DateTimeOffset(2026, 8, 19, 8, 30, 0, Offset);
+
+        Assert.True(ScheduleEvaluator.ShouldArmAutoResume(candidate, now));
+    }
+
+    [Fact]
+    public void ShouldArmAutoResume_CandidateAlreadyPast_DoesNotArm()
+    {
+        // Simulates the loop this method exists to break: an auto-resume relaunch's rescanned
+        // transcript hands back the same reset time already acted on (it's derived from the
+        // rate-limit event's own embedded timestamp, so re-parsing the same line always yields the
+        // same candidate) - now past due, since the earlier fire already consumed it.
+        var candidate = new DateTimeOffset(2026, 8, 19, 9, 0, 0, Offset);
+        var now = new DateTimeOffset(2026, 8, 19, 9, 0, 20, Offset);
+
+        Assert.False(ScheduleEvaluator.ShouldArmAutoResume(candidate, now));
+    }
+
+    [Fact]
+    public void ShouldArmAutoResume_CandidateExactlyNow_DoesNotArm()
+    {
+        var at = new DateTimeOffset(2026, 8, 19, 9, 0, 0, Offset);
+
+        Assert.False(ScheduleEvaluator.ShouldArmAutoResume(at, at));
+    }
 }
