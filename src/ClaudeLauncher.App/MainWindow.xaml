@@ -26,10 +26,14 @@
         <conv:ActivityStateToBrushConverter x:Key="ActivityStateBrushConverter" />
         <conv:ActivityStateToVisibilityConverter x:Key="ActivityStateVisibilityConverter" />
         <conv:UpdateStateToIsReadyConverter x:Key="UpdateStateToIsReadyConverter" />
+        <conv:UsagePercentToValueConverter x:Key="UsagePercentToValueConverter" />
+        <conv:UsagePercentToTextConverter x:Key="UsagePercentToTextConverter" />
+        <conv:UsagePercentToBrushConverter x:Key="UsagePercentToBrushConverter" />
     </ui:FluentWindow.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -51,7 +55,41 @@
 
         <ui:TitleBar Grid.Row="0" Title="Claude Code ランチャー" />
 
-        <ui:Card Grid.Row="1" Margin="24,8,24,0"
+        <ui:Card Grid.Row="1" Margin="24,8,24,0">
+            <StackPanel>
+                <TextBlock Text="Claude 利用状況（アカウント全体）" FontSize="12" FontWeight="SemiBold" Opacity="0.7" Margin="0,0,0,8" />
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="80" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" MinWidth="70" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="5時間制限" FontSize="12" VerticalAlignment="Center" />
+                    <ProgressBar Grid.Column="1" Height="8" Margin="8,0" VerticalAlignment="Center" Minimum="0" Maximum="100"
+                                 Value="{Binding SessionWindowUsagePercent, Converter={StaticResource UsagePercentToValueConverter}}"
+                                 Foreground="{Binding SessionWindowUsagePercent, Converter={StaticResource UsagePercentToBrushConverter}}" />
+                    <TextBlock Grid.Column="2" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"
+                               Text="{Binding SessionWindowUsagePercent, Converter={StaticResource UsagePercentToTextConverter}}" />
+                </Grid>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="80" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" MinWidth="70" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="週次制限" FontSize="12" VerticalAlignment="Center" />
+                    <ProgressBar Grid.Column="1" Height="8" Margin="8,0" VerticalAlignment="Center" Minimum="0" Maximum="100"
+                                 Value="{Binding WeeklyWindowUsagePercent, Converter={StaticResource UsagePercentToValueConverter}}"
+                                 Foreground="{Binding WeeklyWindowUsagePercent, Converter={StaticResource UsagePercentToBrushConverter}}" />
+                    <TextBlock Grid.Column="2" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"
+                               Text="{Binding WeeklyWindowUsagePercent, Converter={StaticResource UsagePercentToTextConverter}}" />
+                </Grid>
+            </StackPanel>
+        </ui:Card>
+
+        <ui:Card Grid.Row="2" Margin="24,8,24,0"
                  Visibility="{Binding Update.State, Converter={StaticResource UpdateStateToIsReadyConverter}}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -70,7 +108,7 @@
             </Grid>
         </ui:Card>
 
-        <TabControl Grid.Row="2" Margin="24,4,24,24" SelectionChanged="MainTabControl_SelectionChanged">
+        <TabControl Grid.Row="3" Margin="24,4,24,24" SelectionChanged="MainTabControl_SelectionChanged">
             <TabItem Header="プロジェクト">
                 <Grid>
                     <Grid.RowDefinitions>

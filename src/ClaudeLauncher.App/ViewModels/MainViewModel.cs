@@ -19,6 +19,7 @@ public partial class MainViewModel : ObservableObject
 
     private readonly SessionProfileStore _store;
     private readonly ProcessLauncherService _launcher;
+    private readonly ClaudeAccountUsageTracker _usageTracker;
     private readonly DispatcherTimer _scheduleTimer;
     private readonly DispatcherTimer _dashboardTimer;
 
@@ -41,6 +42,16 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int idleCount;
 
+    /// <summary>% of Claude's account-wide 5-hour/weekly usage limit consumed so far, or null if that
+    /// window has never been calibrated yet (its limit hasn't been hit once) - see
+    /// <see cref="ClaudeAccountUsageTracker"/>. Account-wide, not per-project, so shown once on the
+    /// dashboard rather than per session card.</summary>
+    [ObservableProperty]
+    private double? sessionWindowUsagePercent;
+
+    [ObservableProperty]
+    private double? weeklyWindowUsagePercent;
+
     public MainViewModel()
         : this(new SessionProfileStore(), new ProcessLauncherService())
     {
@@ -50,6 +61,7 @@ public partial class MainViewModel : ObservableObject
     {
         _store = store;
         _launcher = launcher;
+        _usageTracker = new ClaudeAccountUsageTracker();
         Update = new UpdateViewModel();
         Settings = new SettingsViewModel(new AppSettingsStore(), new StartupRegistrationService(), Update);
 
@@ -60,6 +72,11 @@ public partial class MainViewModel : ObservableObject
 
         ConfigFiles = new ConfigFilesViewModel(Sessions);
         RefreshActivitySummary();
+
+        // One-time synchronous backfill scan (see ClaudeAccountUsageTracker.Poll) so the bars show a
+        // real percentage from the moment the window opens, not just after the first schedule tick.
+        _usageTracker.Poll(DateTimeOffset.Now);
+        RefreshUsagePercentages(DateTimeOffset.Now);
 
         _scheduleTimer = new DispatcherTimer { Interval = ScheduleCheckInterval };
         _scheduleTimer.Tick += (_, _) => CheckSchedules();
@@ -88,6 +105,12 @@ public partial class MainViewModel : ObservableObject
     {
         var now = DateTimeOffset.Now;
         var anyFired = false;
+
+        // Scanning every ~/.claude/projects transcript is heavier than the 2s dashboard tick's bounded
+        // tail reads, but incremental (offset-based) after the first call, so it rides this slower timer
+        // rather than getting its own.
+        _usageTracker.Poll(now);
+        RefreshUsagePercentages(now);
 
         foreach (var session in Sessions)
         {
@@ -128,6 +151,14 @@ public partial class MainViewModel : ObservableObject
         AwaitingApprovalCount = Sessions.Count(s => s.ActivityState == ProjectActivityState.AwaitingApproval);
         RespondingCount = Sessions.Count(s => s.ActivityState == ProjectActivityState.Responding);
         IdleCount = Sessions.Count(s => s.ActivityState == ProjectActivityState.Idle);
+    }
+
+    private void RefreshUsagePercentages(DateTimeOffset now)
+    {
+        SessionWindowUsagePercent = UsageWindowEvaluator.ComputePercentage(
+            _usageTracker.GetWindowTotal(ClaudeAccountUsageTracker.SessionWindow, now), _usageTracker.SessionWindowBaselineTokens);
+        WeeklyWindowUsagePercent = UsageWindowEvaluator.ComputePercentage(
+            _usageTracker.GetWindowTotal(ClaudeAccountUsageTracker.WeeklyWindow, now), _usageTracker.WeeklyWindowBaselineTokens);
     }
 
     public void AddProfile(SessionProfile profile)

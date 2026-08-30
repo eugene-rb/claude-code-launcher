@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ClaudeLauncher.App.Models;
 
 namespace ClaudeLauncher.App.Services;
 
@@ -15,7 +16,12 @@ namespace ClaudeLauncher.App.Services;
 /// Parsing is defensive throughout: malformed/unexpected input yields null, never an exception.</summary>
 public static partial class UsageLimitEventParser
 {
-    public static DateTimeOffset? TryParseLine(string jsonlLine)
+    public static DateTimeOffset? TryParseLine(string jsonlLine) => TryParseLineWithKind(jsonlLine)?.ResetAt;
+
+    /// <summary>Same detection as <see cref="TryParseLine"/>, but also reports which limit (session or
+    /// weekly) the event refers to - needed to calibrate the right one of the two account-wide usage
+    /// baselines in <see cref="ClaudeAccountUsageTracker"/>.</summary>
+    public static UsageLimitEvent? TryParseLineWithKind(string jsonlLine)
     {
         if (!jsonlLine.Contains("\"error\":\"rate_limit\"", StringComparison.Ordinal))
         {
@@ -52,7 +58,7 @@ public static partial class UsageLimitEventParser
                     && block.TryGetProperty("text", out var textEl) && textEl.ValueKind == JsonValueKind.String
                     && textEl.GetString() is { } text)
                 {
-                    var parsed = TryParseResetTime(text, eventTimestamp);
+                    var parsed = TryParseResetTimeWithKind(text, eventTimestamp);
                     if (parsed is not null)
                     {
                         return parsed;
@@ -71,13 +77,22 @@ public static partial class UsageLimitEventParser
     /// <summary>Parses "You've hit your session|weekly limit &#183; resets &lt;time&gt;[, &lt;month day&gt;]
     /// (&lt;tz&gt;)" using the event's own timestamp as the reference "now" — never the caller's clock —
     /// so a late poll can't miscompute which day the reset falls on.</summary>
-    public static DateTimeOffset? TryParseResetTime(string messageText, DateTimeOffset eventTimestamp)
+    public static DateTimeOffset? TryParseResetTime(string messageText, DateTimeOffset eventTimestamp) =>
+        TryParseResetTimeWithKind(messageText, eventTimestamp)?.ResetAt;
+
+    /// <summary>Same parsing as <see cref="TryParseResetTime"/>, but also reports which limit (session
+    /// or weekly) the message refers to - see <see cref="TryParseLineWithKind"/>.</summary>
+    public static UsageLimitEvent? TryParseResetTimeWithKind(string messageText, DateTimeOffset eventTimestamp)
     {
         var match = ResetTimeRegex().Match(messageText.Trim());
         if (!match.Success)
         {
             return null;
         }
+
+        var kind = string.Equals(match.Groups["kind"].Value, "weekly", StringComparison.OrdinalIgnoreCase)
+            ? UsageLimitKind.Weekly
+            : UsageLimitKind.Session;
 
         if (!TryParseTimeOfDay(match.Groups["time"].Value, out var timeOfDay))
         {
@@ -114,7 +129,7 @@ public static partial class UsageLimitEventParser
             result = new DateTimeOffset(candidate, offset);
         }
 
-        return result;
+        return new UsageLimitEvent(kind, result);
     }
 
     private static bool TryParseTimeOfDay(string text, out TimeSpan timeOfDay)
@@ -176,7 +191,7 @@ public static partial class UsageLimitEventParser
         }
     }
 
-    [GeneratedRegex(@"^You've hit your (?:session|weekly) limit\s*[·∙]\s*resets\s+(?:(?<date>[A-Za-z]{3}\s+\d{1,2}),\s*)?(?<time>\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*(?:\((?<tz>[^)]+)\))?\s*$",
+    [GeneratedRegex(@"^You've hit your (?<kind>session|weekly) limit\s*[·∙]\s*resets\s+(?:(?<date>[A-Za-z]{3}\s+\d{1,2}),\s*)?(?<time>\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*(?:\((?<tz>[^)]+)\))?\s*$",
         RegexOptions.IgnoreCase)]
     private static partial Regex ResetTimeRegex();
 }

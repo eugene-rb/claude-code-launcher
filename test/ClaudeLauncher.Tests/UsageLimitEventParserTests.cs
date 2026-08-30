@@ -1,3 +1,4 @@
+using ClaudeLauncher.App.Models;
 using ClaudeLauncher.App.Services;
 
 namespace ClaudeLauncher.Tests;
@@ -120,5 +121,40 @@ public class UsageLimitEventParserTests
             """;
 
         Assert.Null(UsageLimitEventParser.TryParseLine(line));
+    }
+
+    [Fact]
+    public void TryParseResetTimeWithKind_SessionLimit_ReportsSessionKind()
+    {
+        var eventTimestamp = new DateTimeOffset(2026, 8, 19, 15, 42, 19, TimeSpan.Zero);
+        var result = UsageLimitEventParser.TryParseResetTimeWithKind("You've hit your session limit · resets 3:30am (Asia/Tokyo)", eventTimestamp);
+
+        Assert.NotNull(result);
+        Assert.Equal(UsageLimitKind.Session, result!.Value.Kind);
+        Assert.Equal(new DateTimeOffset(2026, 8, 20, 3, 30, 0, TimeSpan.FromHours(9)), result.Value.ResetAt);
+    }
+
+    [Fact]
+    public void TryParseResetTimeWithKind_WeeklyLimit_ReportsWeeklyKind()
+    {
+        var eventTimestamp = new DateTimeOffset(2026, 7, 21, 13, 43, 38, TimeSpan.Zero);
+        var result = UsageLimitEventParser.TryParseResetTimeWithKind("You've hit your weekly limit · resets Jul 24, 12pm (Asia/Tokyo)", eventTimestamp);
+
+        Assert.NotNull(result);
+        Assert.Equal(UsageLimitKind.Weekly, result!.Value.Kind);
+    }
+
+    [Fact]
+    public void TryParseLineWithKind_RealCapturedShape_ReportsSessionKindAndResetTime()
+    {
+        const string line = """
+            {"parentUuid":"ca4a521b-5e1a-412a-b8f4-016d47aa2684","isSidechain":false,"type":"assistant","uuid":"8b441d7b-93f6-43c1-8cab-cadd658dcf78","timestamp":"2026-08-04T15:53:49.229Z","message":{"id":"7dec0fb2-1988-4eb4-8923-2728ca20b47a","role":"assistant","content":[{"type":"text","text":"You've hit your session limit \u00b7 resets 1:50am (Asia/Tokyo)"}]},"requestId":"req_011CdhyhjJBXqstNrqmXk3Wj","error":"rate_limit","isApiErrorMessage":true,"apiErrorStatus":429,"cwd":"C:\\Users\\kind4","sessionId":"c3223a9c-af12-4a08-a4c5-fb2ed317ae1e","version":"2.1.221"}
+            """;
+
+        var result = UsageLimitEventParser.TryParseLineWithKind(line);
+
+        Assert.NotNull(result);
+        Assert.Equal(UsageLimitKind.Session, result!.Value.Kind);
+        Assert.Equal(new DateTimeOffset(2026, 8, 5, 1, 50, 0, TimeSpan.FromHours(9)), result.Value.ResetAt);
     }
 }
