@@ -17,6 +17,11 @@ public partial class MainViewModel : ObservableObject
     /// 20 seconds behind whatever Claude just did.</summary>
     private static readonly TimeSpan DashboardRefreshInterval = TimeSpan.FromSeconds(2);
 
+    /// <summary>How recent a status-line snapshot reading has to be for the bars to show it as the
+    /// live "実測" value. Older than this and no Claude session has been active to refresh it, so the
+    /// bars fall back to the token-based "推定".</summary>
+    private static readonly TimeSpan RealReadingFreshness = TimeSpan.FromMinutes(15);
+
     private readonly SessionProfileStore _store;
     private readonly ProcessLauncherService _launcher;
     private readonly ClaudeAccountUsageTracker _usageTracker;
@@ -51,6 +56,14 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private double? weeklyWindowUsagePercent;
+
+    /// <summary>True when the corresponding percentage is a real reading from Claude Code's status
+    /// line ("実測"); false when it's the token-based estimate ("推定"). Bound by the bar's label.</summary>
+    [ObservableProperty]
+    private bool sessionWindowUsageIsMeasured;
+
+    [ObservableProperty]
+    private bool weeklyWindowUsageIsMeasured;
 
     public MainViewModel()
         : this(new SessionProfileStore(), new ProcessLauncherService())
@@ -155,10 +168,36 @@ public partial class MainViewModel : ObservableObject
 
     private void RefreshUsagePercentages(DateTimeOffset now)
     {
-        SessionWindowUsagePercent = UsageWindowEvaluator.ComputePercentage(
-            _usageTracker.GetWindowTotal(ClaudeAccountUsageTracker.SessionWindow, now), _usageTracker.SessionWindowBaselineTokens);
-        WeeklyWindowUsagePercent = UsageWindowEvaluator.ComputePercentage(
-            _usageTracker.GetWindowTotal(ClaudeAccountUsageTracker.WeeklyWindow, now), _usageTracker.WeeklyWindowBaselineTokens);
+        (SessionWindowUsagePercent, SessionWindowUsageIsMeasured) = EvaluateUsageWindow(
+            now, ClaudeAccountUsageTracker.SessionWindow,
+            _usageTracker.SessionWindowLastRealPercent, _usageTracker.SessionWindowLastRealAt,
+            _usageTracker.SessionWindowResetsAt, _usageTracker.SessionWindowBaselineTokens);
+
+        (WeeklyWindowUsagePercent, WeeklyWindowUsageIsMeasured) = EvaluateUsageWindow(
+            now, ClaudeAccountUsageTracker.WeeklyWindow,
+            _usageTracker.WeeklyWindowLastRealPercent, _usageTracker.WeeklyWindowLastRealAt,
+            _usageTracker.WeeklyWindowResetsAt, _usageTracker.WeeklyWindowBaselineTokens);
+    }
+
+    /// <summary>Prefers a fresh real reading from the status-line snapshot; otherwise falls back to the
+    /// token estimate - summed against the real block window when its <c>resets_at</c> boundary is
+    /// known and still ahead, else a rolling window.</summary>
+    private (double? Percent, bool IsMeasured) EvaluateUsageWindow(
+        DateTimeOffset now, TimeSpan window,
+        double? lastRealPercent, DateTimeOffset? lastRealAt, DateTimeOffset? resetsAt, long? baselineTokens)
+    {
+        if (lastRealPercent is { } real && lastRealAt is { } capturedAt
+            && now - capturedAt < RealReadingFreshness
+            && resetsAt is { } reset && reset > now)
+        {
+            return (real, true);
+        }
+
+        var windowTokens = resetsAt is { } r && r > now
+            ? _usageTracker.GetWindowTotalSince(r - window)
+            : _usageTracker.GetWindowTotal(window, now);
+
+        return (UsageWindowEvaluator.ComputePercentage(windowTokens, baselineTokens), false);
     }
 
     public void AddProfile(SessionProfile profile)

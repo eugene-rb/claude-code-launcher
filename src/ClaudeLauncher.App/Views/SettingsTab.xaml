@@ -3,11 +3,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              xmlns:vm="clr-namespace:ClaudeLauncher.App.ViewModels"
+             xmlns:conv="clr-namespace:ClaudeLauncher.App.Converters"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
              d:DesignHeight="500" d:DesignWidth="900">
+
+    <UserControl.Resources>
+        <conv:NotNullToVisibilityConverter x:Key="NotNullToVisibilityConverter" />
+    </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="0,12,0,0" MaxWidth="560" HorizontalAlignment="Left">
@@ -70,6 +75,34 @@
                     <ui:ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
                                       IsChecked="{Binding AutoResumeOnLimitEnabled}" />
                 </Grid>
+            </ui:Card>
+
+            <ui:Card Margin="0,0,0,16">
+                <StackPanel Margin="4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+                            <TextBlock Text="利用状況を実測で表示" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.6">
+                                Claude Code の status line 経由でアカウントの実際の消費率
+                                (<Run Text="/usage" FontFamily="Consolas" /> と同じ数値)を取得し、ダッシュボードのバーに「実測」として表示します。
+                                ON にすると <Run Text="~/.claude/settings.json" FontFamily="Consolas" /> の
+                                <Run Text="statusLine" FontFamily="Consolas" /> にランチャーのブリッジを登録します(変更前に .bak を作成、OFF で元に戻します)。
+                                副作用として Claude Code のフッターのキーヒント(esc to interrupt など)が非表示になります。数値は Pro/Max 購読者のみ、かつ API 応答のたびに更新されます。
+                            </TextBlock>
+                        </StackPanel>
+
+                        <ui:ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                          IsChecked="{Binding UsageStatusLineBridgeEnabled}" />
+                    </Grid>
+                    <TextBlock Text="{Binding UsageStatusLineBridgeError}" TextWrapping="Wrap" FontSize="11"
+                               Foreground="#D13438" Margin="0,8,0,0"
+                               Visibility="{Binding UsageStatusLineBridgeError, Converter={StaticResource NotNullToVisibilityConverter}}" />
+                </StackPanel>
             </ui:Card>
 
             <ui:Card Margin="0,0,0,16">

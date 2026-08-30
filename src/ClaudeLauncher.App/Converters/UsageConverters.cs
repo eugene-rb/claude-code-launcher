@@ -49,6 +49,17 @@ public sealed class UsagePercentToBrushConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>bool IsMeasured -> "実測" (a live reading from Claude Code's status line) / "推定" (the
+/// token-based estimate). Sits next to the percentage text on each usage bar.</summary>
+public sealed class UsageIsMeasuredToTextConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is true ? "実測" : "推定";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>Visible when the bound nullable percentage has a value (i.e. the window has been calibrated
 /// at least once); pass ConverterParameter="Invert" to show only while it's still null instead.</summary>
 public sealed class UsagePercentHasValueToVisibilityConverter : IValueConverter

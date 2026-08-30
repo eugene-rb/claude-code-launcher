@@ -12,15 +12,29 @@ public class ClaudeAccountUsageTrackerTests
     private static string RateLimitLine(string timestamp, string text) =>
         $$"""{"type":"assistant","timestamp":"{{timestamp}}","message":{"content":[{"type":"text","text":"{{text}}"}]},"error":"rate_limit","isApiErrorMessage":true,"apiErrorStatus":429}""";
 
+    private static string SnapshotJson(string capturedAt, string? fiveHour = null, string? sevenDay = null)
+    {
+        var windows = new List<string>();
+        if (fiveHour is not null) windows.Add($"\"fiveHour\":{fiveHour}");
+        if (sevenDay is not null) windows.Add($"\"sevenDay\":{sevenDay}");
+        var body = windows.Count > 0 ? "," + string.Join(",", windows) : string.Empty;
+        return $"{{\"capturedAt\":\"{capturedAt}\"{body}}}";
+    }
+
+    private static string Window(double usedPercentage, string resetsAt) =>
+        $"{{\"usedPercentage\":{usedPercentage.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"resetsAt\":\"{resetsAt}\"}}";
+
     private sealed class TempRoot : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ClaudeLauncherTests_" + Guid.NewGuid().ToString("N"));
         public string CalibrationFile { get; }
+        public string SnapshotFile { get; }
 
         public TempRoot()
         {
             Directory.CreateDirectory(Path);
             CalibrationFile = System.IO.Path.Combine(Path, "usage-calibration.json");
+            SnapshotFile = System.IO.Path.Combine(Path, "usage-snapshot.json");
         }
 
         public string NewProjectDir()
@@ -30,8 +44,10 @@ public class ClaudeAccountUsageTrackerTests
             return dir;
         }
 
+        public void WriteSnapshot(string json) => File.WriteAllText(SnapshotFile, json);
+
         public ClaudeAccountUsageTracker NewTracker() =>
-            new(new UsageCalibrationStore(CalibrationFile), Path);
+            new(new UsageCalibrationStore(CalibrationFile), Path, new UsageSnapshotStore(SnapshotFile));
 
         public void Dispose() => Directory.Delete(Path, recursive: true);
     }
@@ -40,7 +56,10 @@ public class ClaudeAccountUsageTrackerTests
     public void Poll_NoProjectsDirectory_DoesNotThrow()
     {
         var missingRoot = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ClaudeLauncherTests_missing_" + Guid.NewGuid().ToString("N"));
-        var tracker = new ClaudeAccountUsageTracker(new UsageCalibrationStore(System.IO.Path.Combine(missingRoot, "calib.json")), missingRoot);
+        var tracker = new ClaudeAccountUsageTracker(
+            new UsageCalibrationStore(System.IO.Path.Combine(missingRoot, "calib.json")),
+            missingRoot,
+            new UsageSnapshotStore(System.IO.Path.Combine(missingRoot, "snapshot.json")));
 
         tracker.Poll(DateTimeOffset.Now);
 
@@ -179,5 +198,85 @@ public class ClaudeAccountUsageTrackerTests
             tracker.GetWindowTotal(ClaudeAccountUsageTracker.SessionWindow, now), tracker.SessionWindowBaselineTokens);
 
         Assert.Null(percentage);
+    }
+
+    [Fact]
+    public void Poll_FreshSnapshotReading_FitsBaselineToRealPercentAndRecordsWindow()
+    {
+        using var root = new TempRoot();
+        var projectDir = root.NewProjectDir();
+        var now = new DateTimeOffset(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
+        var resetsAt = now.AddHours(3); // block started 2h ago (5h window)
+
+        File.WriteAllLines(System.IO.Path.Combine(projectDir, "a.jsonl"),
+        [
+            TokenLine(now.AddHours(-1).ToString("O"), 250),
+            TokenLine(now.AddMinutes(-5).ToString("O"), 250),
+        ]);
+        root.WriteSnapshot(SnapshotJson(now.ToString("O"), fiveHour: Window(25.0, resetsAt.ToString("O"))));
+
+        var tracker = root.NewTracker();
+        tracker.Poll(now);
+
+        // 500 tokens in the block == 25% -> baseline 2000.
+        Assert.Equal(2000, tracker.SessionWindowBaselineTokens);
+        Assert.Equal(25.0, tracker.SessionWindowLastRealPercent);
+        Assert.Equal(resetsAt, tracker.SessionWindowResetsAt);
+        Assert.Null(tracker.WeeklyWindowBaselineTokens);
+    }
+
+    [Fact]
+    public void Poll_SnapshotWindowAlreadyReset_IsIgnoredAndNeverPersistsBaseline()
+    {
+        using var root = new TempRoot();
+        var projectDir = root.NewProjectDir();
+        var now = new DateTimeOffset(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
+
+        File.WriteAllText(System.IO.Path.Combine(projectDir, "a.jsonl"), TokenLine(now.AddMinutes(-5).ToString("O"), 400) + "\n");
+        root.WriteSnapshot(SnapshotJson(now.AddHours(-2).ToString("O"), fiveHour: Window(90.0, now.AddMinutes(-1).ToString("O"))));
+
+        var tracker = root.NewTracker();
+        tracker.Poll(now);
+
+        Assert.Null(tracker.SessionWindowBaselineTokens);
+        Assert.Null(tracker.SessionWindowResetsAt);
+        Assert.Null(tracker.SessionWindowLastRealPercent);
+        Assert.False(File.Exists(root.CalibrationFile));
+    }
+
+    [Fact]
+    public void Poll_SnapshotPercentBelowFloor_RecordsReadingButDoesNotFitBaseline()
+    {
+        using var root = new TempRoot();
+        var projectDir = root.NewProjectDir();
+        var now = new DateTimeOffset(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
+
+        File.WriteAllText(System.IO.Path.Combine(projectDir, "a.jsonl"), TokenLine(now.AddMinutes(-5).ToString("O"), 100) + "\n");
+        root.WriteSnapshot(SnapshotJson(now.ToString("O"), fiveHour: Window(5.0, now.AddHours(4).ToString("O"))));
+
+        var tracker = root.NewTracker();
+        tracker.Poll(now);
+
+        Assert.Null(tracker.SessionWindowBaselineTokens);
+        Assert.Equal(5.0, tracker.SessionWindowLastRealPercent);
+    }
+
+    [Fact]
+    public void GetWindowTotalSince_CutsAtBlockStart()
+    {
+        using var root = new TempRoot();
+        var projectDir = root.NewProjectDir();
+        var now = new DateTimeOffset(2026, 8, 19, 12, 0, 0, TimeSpan.Zero);
+
+        File.WriteAllLines(System.IO.Path.Combine(projectDir, "a.jsonl"),
+        [
+            TokenLine(now.AddHours(-4).ToString("O"), 111), // before block start
+            TokenLine(now.AddHours(-1).ToString("O"), 222), // inside block
+        ]);
+
+        var tracker = root.NewTracker();
+        tracker.Poll(now);
+
+        Assert.Equal(222, tracker.GetWindowTotalSince(now.AddHours(-2)));
     }
 }

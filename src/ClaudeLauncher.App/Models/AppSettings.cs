@@ -26,4 +26,16 @@ public sealed class AppSettings
     /// the user's behalf. Applies to both the scheduled auto-resume and the manual "再開" button, since
     /// neither can leave a blocking chooser on screen for an unattended relaunch to answer.</summary>
     public ResumeMode ResumeMode { get; set; }
+
+    /// <summary>When true, the launcher has registered its <c>usage-statusline</c> bridge as Claude
+    /// Code's status-line command in ~/.claude/settings.json, so the usage bars can show real
+    /// <c>used_percentage</c> figures instead of a token estimate. Toggled from the 設定 tab; see
+    /// <see cref="Services.ClaudeStatusLineInstaller"/>.</summary>
+    public bool UsageStatusLineBridgeEnabled { get; set; }
+
+    /// <summary>Raw JSON of the <c>statusLine</c> object that was already in ~/.claude/settings.json
+    /// when the bridge was installed, stashed here so <see cref="Services.UsageStatusLineBridge"/> can
+    /// keep running it (chained) and so uninstalling restores it exactly. Null when the user had no
+    /// status line, which is the common case.</summary>
+    public string? ChainedStatusLine { get; set; }
 }

@@ -16,6 +16,8 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly AppSettingsStore _store;
     private readonly StartupRegistrationService _startupRegistration;
+    private readonly ClaudeStatusLineInstaller _statusLineInstaller;
+    private string? _chainedStatusLine;
     private bool _loading;
 
     /// <summary>One editable row per <see cref="AgentCatalog"/> entry - the per-agent executable and
@@ -29,6 +31,18 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private ResumeMode resumeMode;
+
+    /// <summary>When on, the launcher registers its <c>usage-statusline</c> bridge as Claude Code's
+    /// status-line command so the usage bars can show real figures. Writing to
+    /// ~/.claude/settings.json happens the moment this flips - see
+    /// <see cref="OnUsageStatusLineBridgeEnabledChanged"/>.</summary>
+    [ObservableProperty]
+    private bool usageStatusLineBridgeEnabled;
+
+    /// <summary>Non-null after a failed install/uninstall attempt; shown under the toggle. Cleared on
+    /// the next successful toggle.</summary>
+    [ObservableProperty]
+    private string? usageStatusLineBridgeError;
 
     /// <summary>Fixed picker contents for <see cref="ResumeMode"/>. Both modes suppress Claude Code's
     /// own blocking chooser; there is deliberately no "ask me" entry, because an unattended relaunch
@@ -60,14 +74,16 @@ public partial class SettingsViewModel : ObservableObject
     {
     }
 
-    public SettingsViewModel(AppSettingsStore store, StartupRegistrationService startupRegistration, UpdateViewModel update)
+    public SettingsViewModel(AppSettingsStore store, StartupRegistrationService startupRegistration, UpdateViewModel update, ClaudeStatusLineInstaller? statusLineInstaller = null)
     {
         _store = store;
         _startupRegistration = startupRegistration;
+        _statusLineInstaller = statusLineInstaller ?? new ClaudeStatusLineInstaller();
         Update = update;
 
         var settings = _store.Load();
         _loading = true;
+        _chainedStatusLine = settings.ChainedStatusLine;
         foreach (var agent in AgentCatalog.All)
         {
             var current = settings.AgentSettings.TryGetValue(agent.Kind, out var existing)
@@ -78,6 +94,9 @@ public partial class SettingsViewModel : ObservableObject
 
         AutoResumeOnLimitEnabled = settings.AutoResumeOnLimitEnabled;
         ResumeMode = settings.ResumeMode;
+        // The file on disk is the source of truth - it can drift from the saved flag if the user
+        // edited settings.json by hand or another tool took the status-line slot.
+        UsageStatusLineBridgeEnabled = settings.UsageStatusLineBridgeEnabled && _statusLineInstaller.IsBridgeInstalled();
         StartWithWindowsEnabled = _startupRegistration.IsEnabled();
         _loading = false;
     }
@@ -96,6 +115,38 @@ public partial class SettingsViewModel : ObservableObject
         AgentRows.FirstOrDefault(r => r.Kind == kind)?.Arguments ?? AgentCatalog.Get(kind).DefaultArguments;
 
     partial void OnAutoResumeOnLimitEnabledChanged(bool value) => Persist();
+
+    partial void OnUsageStatusLineBridgeEnabledChanged(bool value)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        try
+        {
+            var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+            if (value)
+            {
+                _chainedStatusLine = _statusLineInstaller.Install(exePath);
+            }
+            else
+            {
+                _statusLineInstaller.Uninstall(_chainedStatusLine);
+                _chainedStatusLine = null;
+            }
+
+            UsageStatusLineBridgeError = null;
+            Persist();
+        }
+        catch (Exception ex)
+        {
+            UsageStatusLineBridgeError = $"設定の書き込みに失敗しました: {ex.Message}";
+            _loading = true;
+            UsageStatusLineBridgeEnabled = !value;
+            _loading = false;
+        }
+    }
 
     partial void OnResumeModeChanged(ResumeMode value)
     {
@@ -141,6 +192,8 @@ public partial class SettingsViewModel : ObservableObject
             AgentSettings = agentSettings,
             AutoResumeOnLimitEnabled = AutoResumeOnLimitEnabled,
             ResumeMode = ResumeMode,
+            UsageStatusLineBridgeEnabled = UsageStatusLineBridgeEnabled,
+            ChainedStatusLine = _chainedStatusLine,
         });
     }
 }

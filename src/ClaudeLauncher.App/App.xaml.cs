@@ -40,6 +40,11 @@ public partial class App : Application
 
         new StartupRegistrationService().RefreshPathIfEnabled();
 
+        // Velopack swaps the current\ folder on every update, so the status-line command registered in
+        // ~/.claude/settings.json needs its path re-pointed at the new exe - same reason as above.
+        var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+        new ClaudeStatusLineInstaller().RefreshPathIfInstalled(exePath);
+
         var startMinimized = Array.IndexOf(e.Args, TrayStartArg) >= 0;
 
         _mainWindow = new MainWindow();
