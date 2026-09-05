@@ -192,6 +192,13 @@ internal static class GenericChatJsonlHeuristics
             return (role, content);
         }
 
+        // Codex rollout JSONL stores Responses items under a payload wrapper.
+        if (root.TryGetProperty("payload", out var payloadEl) && payloadEl.ValueKind == JsonValueKind.Object
+            && TryGetRoleAndContent(payloadEl, out role, out content))
+        {
+            return (role, content);
+        }
+
         return (null, null);
     }
 
@@ -220,6 +227,16 @@ internal static class GenericChatJsonlHeuristics
         if (root.TryGetProperty("type", out var typeEl) && typeEl.ValueKind == JsonValueKind.String)
         {
             var type = typeEl.GetString() ?? string.Empty;
+            if (ToolMarkerKeys.Any(k => type.Contains(k, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        if (root.TryGetProperty("payload", out var payload) && payload.ValueKind == JsonValueKind.Object
+            && payload.TryGetProperty("type", out var payloadType) && payloadType.ValueKind == JsonValueKind.String)
+        {
+            var type = payloadType.GetString() ?? string.Empty;
             if (ToolMarkerKeys.Any(k => type.Contains(k, StringComparison.OrdinalIgnoreCase)))
             {
                 return true;

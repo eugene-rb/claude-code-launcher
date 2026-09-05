@@ -30,10 +30,14 @@ public partial class SessionItemViewModel : ObservableObject
 
     private readonly ProcessLauncherService _launcher;
     private readonly SettingsViewModel _settings;
+    private readonly SharedTaskContextService _sharedContext = new();
     private TranscriptLimitWatcher _limitWatcher = new(AgentTranscriptSourceRegistry.Get(AgentKind.ClaudeCode));
+    private AgentKind _activeAgentKind;
     private Process? _process;
 
     public SessionProfile Profile { get; private set; }
+
+    public event EventHandler? ProfileChanged;
 
     [ObservableProperty]
     private string name;
@@ -52,6 +56,7 @@ public partial class SessionItemViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     [NotifyCanExecuteChangedFor(nameof(StartResumeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartHandoffCommand))]
     [NotifyCanExecuteChangedFor(nameof(StartCustomCommand))]
     [NotifyCanExecuteChangedFor(nameof(StopCommand))]
     private bool isRunning;
@@ -120,6 +125,7 @@ public partial class SessionItemViewModel : ObservableObject
         agentDisplayName = AgentCatalog.Get(profile.AgentKind).DisplayName;
         customLaunchAgentKind = profile.AgentKind;
         customLaunchArguments = settings.GetArguments(profile.AgentKind);
+        _activeAgentKind = profile.AgentKind;
         RefreshScheduleSummary();
         RefreshLimitStatusSummary();
         RefreshActivityState(StatusMarkerStore.ReadFresh(StatusMarkerStore.GetDefaultDirectory(), StatusMarkerStore.DefaultMaxAge, DateTimeOffset.Now));
@@ -132,6 +138,7 @@ public partial class SessionItemViewModel : ObservableObject
         WorkingDirectory = updated.WorkingDirectory;
         AccentColorHex = updated.AccentColorHex;
         AgentDisplayName = AgentCatalog.Get(updated.AgentKind).DisplayName;
+        StartHandoffCommand.NotifyCanExecuteChanged();
         RefreshScheduleSummary();
         RefreshLimitStatusSummary();
     }
@@ -181,11 +188,11 @@ public partial class SessionItemViewModel : ObservableObject
     /// auto-resume 5 minutes after the parsed reset time. No-op unless the session is running, the
     /// app-wide <see cref="AppSettings.AutoResumeOnLimitEnabled"/> is on, and
     /// <see cref="IAgentTranscriptSource.SupportsUsageLimitAutoResume"/> is true for this project's
-    /// agent - Claude Code only, for now (see <see cref="AgentCatalog"/>).</summary>
+    /// agent - currently Claude Code and Codex CLI (see <see cref="AgentCatalog"/>).</summary>
     public bool TryDetectUsageLimit()
     {
         if (!IsRunning || !_settings.AutoResumeOnLimitEnabled
-            || !AgentTranscriptSourceRegistry.Get(Profile.AgentKind).SupportsUsageLimitAutoResume)
+            || !AgentTranscriptSourceRegistry.Get(_activeAgentKind).SupportsUsageLimitAutoResume)
         {
             return false;
         }
@@ -196,7 +203,12 @@ public partial class SessionItemViewModel : ObservableObject
             return false;
         }
 
-        var candidate = at + TimeSpan.FromMinutes(5);
+        var counterpart = _settings.CrossAgentHandoffEnabled
+            ? SharedTaskContextService.GetCounterpart(_activeAgentKind)
+            : null;
+        var candidate = counterpart is null
+            ? at + TimeSpan.FromMinutes(5)
+            : DateTimeOffset.Now + TimeSpan.FromSeconds(5);
         if (!ScheduleEvaluator.ShouldArmAutoResume(candidate, DateTimeOffset.Now))
         {
             // Same reset time as an auto-resume already fired for this session - see
@@ -205,6 +217,7 @@ public partial class SessionItemViewModel : ObservableObject
         }
 
         Profile.AutoResumeAt = candidate;
+        Profile.AutoResumeAgentKind = counterpart;
         RefreshLimitStatusSummary();
         return true;
     }
@@ -220,6 +233,7 @@ public partial class SessionItemViewModel : ObservableObject
         if (ScheduleEvaluator.IsAutoResumeStale(Profile, now))
         {
             Profile.AutoResumeAt = null;
+            Profile.AutoResumeAgentKind = null;
             LimitStatusSummary = "自動再開の予定時刻を過ぎたため取り消されました";
             return true;
         }
@@ -229,26 +243,49 @@ public partial class SessionItemViewModel : ObservableObject
             return false;
         }
 
-        if (IsRunning)
-        {
-            Stop();
-        }
-
+        var sourceAgent = _activeAgentKind;
+        var targetAgent = Profile.AutoResumeAgentKind ?? sourceAgent;
         try
         {
-            Launch(resume: true);
+            string? continuationPrompt = null;
+            if (targetAgent != sourceAgent)
+            {
+                var checkpoint = _sharedContext.Capture(Profile.WorkingDirectory, sourceAgent);
+                continuationPrompt = SharedTaskContextService.BuildContinuationPrompt(checkpoint, sourceAgent);
+            }
+
+            if (IsRunning)
+            {
+                Stop();
+            }
+
+            if (targetAgent == sourceAgent)
+            {
+                Launch(resume: true, agentKindOverride: targetAgent);
+            }
+            else
+            {
+                Launch(resume: false, agentKindOverride: targetAgent, initialPrompt: continuationPrompt);
+                Profile.AgentKind = targetAgent;
+                AgentDisplayName = AgentCatalog.Get(targetAgent).DisplayName;
+            }
         }
         catch (Exception)
         {
             // Unattended path: never retry-storm on failure.
             Profile.AutoResumeAt = null;
+            Profile.AutoResumeAgentKind = null;
             LimitStatusSummary = "自動再開に失敗しました";
             return true;
         }
 
         Profile.AutoResumeAt = null;
+        Profile.AutoResumeAgentKind = null;
         RefreshLimitStatusSummary();
-        ScheduleResumeNudge();
+        if (targetAgent == sourceAgent)
+        {
+            ScheduleResumeNudge();
+        }
         return true;
     }
 
@@ -281,7 +318,9 @@ public partial class SessionItemViewModel : ObservableObject
     public void RefreshLimitStatusSummary()
     {
         LimitStatusSummary = Profile.AutoResumeAt is { } at
-            ? $"制限検知 → {at.LocalDateTime:yyyy/MM/dd HH:mm} に自動再開予定 (--continue)"
+            ? Profile.AutoResumeAgentKind is { } target
+                ? $"制限検知 → {AgentCatalog.Get(target).DisplayName} へ引き継ぎ予定 ({at.LocalDateTime:HH:mm:ss})"
+                : $"制限検知 → {at.LocalDateTime:yyyy/MM/dd HH:mm} に自動再開予定"
             : null;
     }
 
@@ -310,12 +349,13 @@ public partial class SessionItemViewModel : ObservableObject
     /// <see cref="MainViewModel"/> reads the marker directory once per tick, not once per project.</summary>
     public void RefreshActivityState(IReadOnlyList<StatusMarker> freshMarkers)
     {
-        var source = AgentTranscriptSourceRegistry.Get(Profile.AgentKind);
+        var sourceKind = IsRunning ? _activeAgentKind : Profile.AgentKind;
+        var source = AgentTranscriptSourceRegistry.Get(sourceKind);
         var file = source.FindMostRecentTranscriptFile(Profile.WorkingDirectory);
 
         // The "awaiting your approval" marker comes from a Claude Code-only hook, so it's only ever
         // meaningful for a Claude Code project - other agents have no equivalent hook to write one.
-        var hasFreshMarker = Profile.AgentKind == AgentKind.ClaudeCode
+        var hasFreshMarker = sourceKind == AgentKind.ClaudeCode
             && freshMarkers.Any(m => WorkingDirectoryComparer.AreSame(m.Cwd, Profile.WorkingDirectory));
 
         if (file is null)
@@ -365,6 +405,28 @@ public partial class SessionItemViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStart))]
     private void StartResume() => Launch(resume: true);
 
+    /// <summary>Manually moves the latest Claude/Codex task to the other CLI through the same shared
+    /// checkpoint used by automatic limit failover.</summary>
+    [RelayCommand(CanExecute = nameof(CanHandoff))]
+    private void StartHandoff()
+    {
+        var sourceAgent = Profile.AgentKind;
+        if (SharedTaskContextService.GetCounterpart(sourceAgent) is not { } targetAgent)
+        {
+            return;
+        }
+
+        var checkpoint = _sharedContext.Capture(Profile.WorkingDirectory, sourceAgent);
+        var prompt = SharedTaskContextService.BuildContinuationPrompt(checkpoint, sourceAgent);
+        Launch(resume: false, agentKindOverride: targetAgent, initialPrompt: prompt);
+        Profile.AgentKind = targetAgent;
+        AgentDisplayName = AgentCatalog.Get(targetAgent).DisplayName;
+        ProfileChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool CanHandoff() => !IsRunning
+        && SharedTaskContextService.GetCounterpart(Profile.AgentKind) is not null;
+
     /// <summary>Launches with <see cref="CustomLaunchAgentKind"/>/<see cref="CustomLaunchArguments"/>
     /// instead of the project's own AI/default arguments - a one-off override, never written back to
     /// <see cref="Profile"/> or <see cref="SettingsViewModel"/>.</summary>
@@ -375,15 +437,21 @@ public partial class SessionItemViewModel : ObservableObject
         IsCustomLaunchOpen = false;
     }
 
-    private void Launch(bool resume, string? argumentsOverride = null, AgentKind? agentKindOverride = null)
+    private void Launch(
+        bool resume,
+        string? argumentsOverride = null,
+        AgentKind? agentKindOverride = null,
+        string? initialPrompt = null)
     {
         var agentKind = agentKindOverride ?? Profile.AgentKind;
         var argumentsText = argumentsOverride ?? _settings.GetArguments(agentKind);
         var executable = _settings.GetExecutable(agentKind);
-        _process = _launcher.Start(Profile, agentKind, executable, argumentsText, resume, _settings.ResumeMode);
+        _process = _launcher.Start(Profile, agentKind, executable, argumentsText, resume, _settings.ResumeMode, initialPrompt);
         _process.Exited += OnProcessExited;
         ProcessId = _process.Id;
         IsRunning = true;
+        _activeAgentKind = agentKind;
+        AgentDisplayName = AgentCatalog.Get(agentKind).DisplayName;
         Profile.LastLaunchedAt = DateTimeOffset.Now;
         _limitWatcher = new TranscriptLimitWatcher(AgentTranscriptSourceRegistry.Get(agentKind));
         _limitWatcher.Reset(DateTimeOffset.Now);
@@ -426,9 +494,15 @@ public partial class SessionItemViewModel : ObservableObject
                 return;
             }
 
+            // Some CLI versions exit the process immediately after reporting a limit. Poll once
+            // while this run is still marked active so the final transcript line is not missed
+            // between the normal 20-second checks.
+            TryDetectUsageLimit();
+
             _process = null;
             IsRunning = false;
             ProcessId = null;
+            AgentDisplayName = AgentCatalog.Get(Profile.AgentKind).DisplayName;
             proc.Dispose();
         });
     }

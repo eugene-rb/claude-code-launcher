@@ -9,7 +9,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Claude Code ランチャー" Height="680" Width="960" MinHeight="420" MinWidth="680"
+        Title="Claude / Codex Resumer" Height="760" Width="960" MinHeight="520" MinWidth="680"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"
         WindowCornerPreference="Round"
@@ -42,7 +42,7 @@
         </Grid.RowDefinitions>
 
         <tray:NotifyIcon x:Name="TrayIcon"
-                          TooltipText="Claude Code ランチャー"
+                          TooltipText="Claude / Codex Resumer"
                           Icon="pack://application:,,,/Assets/app.ico"
                           MenuOnRightClick="True"
                           LeftClick="TrayIcon_LeftClick">
@@ -55,11 +55,11 @@
             </tray:NotifyIcon.Menu>
         </tray:NotifyIcon>
 
-        <ui:TitleBar Grid.Row="0" Title="Claude Code ランチャー" />
+        <ui:TitleBar Grid.Row="0" Title="Claude / Codex Resumer" />
 
         <ui:Card Grid.Row="1" Margin="24,8,24,0">
             <StackPanel>
-                <TextBlock Text="Claude 利用状況（アカウント全体）" FontSize="12" FontWeight="SemiBold" Opacity="0.7" Margin="0,0,0,8" />
+                <TextBlock Text="利用状況（アカウント全体）" FontSize="12" FontWeight="SemiBold" Opacity="0.7" Margin="0,0,0,8" />
 
                 <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
@@ -67,7 +67,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" MinWidth="96" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="5時間制限" FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="0" Text="Claude 5時間" FontSize="12" VerticalAlignment="Center" />
                     <ProgressBar Grid.Column="1" Height="8" Margin="8,0" VerticalAlignment="Center" Minimum="0" Maximum="100"
                                  Value="{Binding SessionWindowUsagePercent, Converter={StaticResource UsagePercentToValueConverter}}"
                                  Foreground="{Binding SessionWindowUsagePercent, Converter={StaticResource UsagePercentToBrushConverter}}" />
@@ -86,7 +86,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" MinWidth="96" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="週次制限" FontSize="12" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="0" Text="Claude 週次" FontSize="12" VerticalAlignment="Center" />
                     <ProgressBar Grid.Column="1" Height="8" Margin="8,0" VerticalAlignment="Center" Minimum="0" Maximum="100"
                                  Value="{Binding WeeklyWindowUsagePercent, Converter={StaticResource UsagePercentToValueConverter}}"
                                  Foreground="{Binding WeeklyWindowUsagePercent, Converter={StaticResource UsagePercentToBrushConverter}}" />
@@ -96,6 +96,44 @@
                                    Visibility="{Binding WeeklyWindowUsagePercent, Converter={StaticResource UsagePercentHasValueToVisibilityConverter}}" />
                         <TextBlock FontSize="12" VerticalAlignment="Center"
                                    Text="{Binding WeeklyWindowUsagePercent, Converter={StaticResource UsagePercentToTextConverter}}" />
+                    </StackPanel>
+                </Grid>
+
+                <Separator Margin="0,8" Opacity="0.35" />
+
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="120" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" MinWidth="96" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding CodexPrimaryWindowLabel}" FontSize="12" VerticalAlignment="Center" />
+                    <ProgressBar Grid.Column="1" Height="8" Margin="8,0" VerticalAlignment="Center" Minimum="0" Maximum="100"
+                                 Value="{Binding CodexPrimaryUsagePercent, Converter={StaticResource UsagePercentToValueConverter}}"
+                                 Foreground="{Binding CodexPrimaryUsagePercent, Converter={StaticResource UsagePercentToBrushConverter}}" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock FontSize="10" Opacity="0.55" VerticalAlignment="Center" Margin="0,0,4,0" Text="実測"
+                                   Visibility="{Binding CodexPrimaryUsagePercent, Converter={StaticResource UsagePercentHasValueToVisibilityConverter}}" />
+                        <TextBlock FontSize="12" VerticalAlignment="Center"
+                                   Text="{Binding CodexPrimaryUsagePercent, Converter={StaticResource UsagePercentToTextConverter}}" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="120" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" MinWidth="96" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding CodexSecondaryWindowLabel}" FontSize="12" VerticalAlignment="Center" />
+                    <ProgressBar Grid.Column="1" Height="8" Margin="8,0" VerticalAlignment="Center" Minimum="0" Maximum="100"
+                                 Value="{Binding CodexSecondaryUsagePercent, Converter={StaticResource UsagePercentToValueConverter}}"
+                                 Foreground="{Binding CodexSecondaryUsagePercent, Converter={StaticResource UsagePercentToBrushConverter}}" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock FontSize="10" Opacity="0.55" VerticalAlignment="Center" Margin="0,0,4,0" Text="実測"
+                                   Visibility="{Binding CodexSecondaryUsagePercent, Converter={StaticResource UsagePercentHasValueToVisibilityConverter}}" />
+                        <TextBlock FontSize="12" VerticalAlignment="Center"
+                                   Text="{Binding CodexSecondaryUsagePercent, Converter={StaticResource UsagePercentToTextConverter}}" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -241,6 +279,8 @@
                                                     </ui:SplitButton>
                                                     <ui:Button Content="続きから" ToolTip="直近の会話を続きから再開して起動" Appearance="Secondary" Margin="0,0,6,0"
                                                                Icon="{ui:SymbolIcon Symbol=ArrowClockwise24}" Command="{Binding StartResumeCommand}" />
+                                                    <ui:Button Content="AI引継ぎ" ToolTip="Claude Code と Codex CLI のもう片方へ共有チェックポイント経由で引き継ぐ" Appearance="Secondary" Margin="0,0,6,0"
+                                                               Icon="{ui:SymbolIcon Symbol=ArrowSync24}" Command="{Binding StartHandoffCommand}" />
                                                     <ui:Button Content="停止" Appearance="Danger" Margin="0,0,6,0"
                                                                Icon="{ui:SymbolIcon Symbol=Stop24}" Command="{Binding StopCommand}" />
                                                     <ui:Button ToolTip="編集" Margin="0,0,6,0"

@@ -23,6 +23,17 @@ public class ConfigFileServiceTests
     }
 
     [Theory]
+    [InlineData("user-codex-agents-md", "AGENTS.md")]
+    [InlineData("user-codex-config-toml", "config.toml")]
+    public void ResolveUserPath_CodexFiles_PointUnderDotCodex(string key, string fileName)
+    {
+        var definition = ConfigFileService.UserDefinitions.Single(d => d.Key == key);
+        var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", fileName);
+
+        Assert.Equal(expected, ConfigFileService.ResolveUserPath(definition));
+    }
+
+    [Theory]
     [InlineData("project-claude-md", "CLAUDE.md")]
     [InlineData("project-agents-md", "AGENTS.md")]
     [InlineData("project-settings-json", "settings.json")]

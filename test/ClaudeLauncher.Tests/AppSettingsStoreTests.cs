@@ -14,6 +14,7 @@ public class AppSettingsStoreTests
         var store = new AppSettingsStore(CreateTempSettingsPath());
 
         Assert.Equal(ResumeMode.FullSession, store.Load().ResumeMode);
+        Assert.True(store.Load().CrossAgentHandoffEnabled);
     }
 
     [Fact]
@@ -26,6 +27,23 @@ public class AppSettingsStoreTests
             store.Save(new AppSettings { ResumeMode = ResumeMode.CompactFirst });
 
             Assert.Equal(ResumeMode.CompactFirst, new AppSettingsStore(path).Load().ResumeMode);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(path)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SaveThenLoad_RoundTripsDisabledCrossAgentHandoff()
+    {
+        var path = CreateTempSettingsPath();
+        try
+        {
+            var store = new AppSettingsStore(path);
+            store.Save(new AppSettings { CrossAgentHandoffEnabled = false });
+
+            Assert.False(new AppSettingsStore(path).Load().CrossAgentHandoffEnabled);
         }
         finally
         {

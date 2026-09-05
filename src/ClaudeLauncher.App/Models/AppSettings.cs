@@ -22,6 +22,12 @@ public sealed class AppSettings
     /// Applies to every project - see <see cref="ViewModels.SessionItemViewModel.TryDetectUsageLimit"/>.</summary>
     public bool AutoResumeOnLimitEnabled { get; set; }
 
+    /// <summary>When a Claude Code or Codex CLI session reaches its account limit, immediately
+    /// continue with the other CLI using a shared transcript checkpoint instead of waiting for the
+    /// limited account's reset time. Enabled by default so a newly installed launcher provides the
+    /// seamless failover behavior without an additional setup step.</summary>
+    public bool CrossAgentHandoffEnabled { get; set; } = true;
+
     /// <summary>Which branch of Claude Code's "Resume from summary?" chooser a resume launch takes on
     /// the user's behalf. Applies to both the scheduled auto-resume and the manual "再開" button, since
     /// neither can leave a blocking chooser on screen for an unattended relaunch to answer.</summary>

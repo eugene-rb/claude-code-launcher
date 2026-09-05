@@ -47,7 +47,7 @@ public static class AgentCatalog
         ResumeEnvironmentVariables: new Dictionary<string, string>(),
         ProjectInstructionFileName: "AGENTS.md",
         UserConfigDirectoryRelativeToHome: ".codex",
-        SupportsUsageLimitAutoResume: false);
+        SupportsUsageLimitAutoResume: true);
 
     /// <summary>`--continue`/`-c` continues the most recent session in the working directory;
     /// `--session`/`-S` (and its undocumented aliases `-r`/`--resume`) select a session by ID and are

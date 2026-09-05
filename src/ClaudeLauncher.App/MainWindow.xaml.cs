@@ -15,7 +15,7 @@ namespace ClaudeLauncher.App;
 /// </summary>
 public partial class MainWindow : FluentWindow
 {
-    private const string DefaultTrayTooltip = "Claude Code ランチャー";
+    private const string DefaultTrayTooltip = "Claude / Codex Resumer";
 
     private bool _isExiting;
 

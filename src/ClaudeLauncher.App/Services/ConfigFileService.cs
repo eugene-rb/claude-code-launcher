@@ -10,8 +10,10 @@ public static class ConfigFileService
 
     public static IReadOnlyList<ConfigFileDefinition> UserDefinitions { get; } =
     [
-        new("user-claude-md", "CLAUDE.md", "ユーザー全体のグローバル指示", "CLAUDE.md", ConfigFileScope.User),
-        new("user-settings-json", "settings.json", "ユーザー全体の設定(権限・フック等)", "settings.json", ConfigFileScope.User),
+        new("user-claude-md", "Claude: CLAUDE.md", "Claude Code のユーザー全体グローバル指示", "CLAUDE.md", ConfigFileScope.User),
+        new("user-settings-json", "Claude: settings.json", "Claude Code のユーザー設定(権限・フック等)", "settings.json", ConfigFileScope.User),
+        new("user-codex-agents-md", "Codex: AGENTS.md", "Codex のユーザー全体グローバル指示", "AGENTS.md", ConfigFileScope.User),
+        new("user-codex-config-toml", "Codex: config.toml", "Codex のユーザー設定(モデル・権限等)", "config.toml", ConfigFileScope.User),
     ];
 
     /// <summary>Key of the canonical project instructions entry - saving this one also mirrors its
@@ -34,7 +36,10 @@ public static class ConfigFileService
     ];
 
     public static string ResolveUserPath(ConfigFileDefinition definition) =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", definition.RelativePath);
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            definition.Key.StartsWith("user-codex-", StringComparison.Ordinal) ? ".codex" : ".claude",
+            definition.RelativePath);
 
     public static string ResolveProjectPath(ConfigFileDefinition definition, string projectDirectory) =>
         Path.Combine(projectDirectory, definition.RelativePath);

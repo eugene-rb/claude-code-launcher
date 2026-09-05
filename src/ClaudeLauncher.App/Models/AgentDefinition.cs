@@ -37,6 +37,6 @@ public sealed record AgentDefinition(
     /// <summary>This agent's per-user config/data directory, relative to the user profile folder.</summary>
     string UserConfigDirectoryRelativeToHome,
     /// <summary>Whether usage-limit detection is allowed to stop and relaunch a running session for
-    /// this agent. Claude Code only - the others have no verified "usage limit hit" event format, and
+    /// this agent. Claude Code and Codex expose verified limit information in their transcripts; other
     /// a false positive here kills a live process, unlike the read-only activity badge/preview.</summary>
     bool SupportsUsageLimitAutoResume);

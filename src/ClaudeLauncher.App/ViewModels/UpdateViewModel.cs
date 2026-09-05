@@ -34,7 +34,25 @@ public partial class UpdateViewModel : ObservableObject
     [ObservableProperty]
     private string? availableVersion;
 
+    [ObservableProperty]
+    private string? lastErrorMessage;
+
     public string CurrentVersionText => _service.CurrentVersionText;
+
+    /// <summary>User-visible result of both automatic and manual checks. Previously only
+    /// ReadyToApply had UI, so a successful "already current" check and every error looked exactly
+    /// like a button that did nothing.</summary>
+    public string StatusText => State switch
+    {
+        UpdateState.Idle when !_service.IsInstalled => "開発版では更新チェックは無効です。",
+        UpdateState.Idle => "起動後に自動確認します。",
+        UpdateState.Checking => "更新を確認しています…",
+        UpdateState.UpToDate => "最新版です。",
+        UpdateState.Downloading => "更新をダウンロードしています…",
+        UpdateState.ReadyToApply => $"v{AvailableVersion} をダウンロード済みです。再起動して適用できます。",
+        UpdateState.Error => $"更新確認に失敗しました{(string.IsNullOrWhiteSpace(LastErrorMessage) ? "。" : $": {LastErrorMessage}")}",
+        _ => string.Empty,
+    };
 
     /// <summary>Invoked right before <see cref="UpdateService.ApplyUpdatesAndRestart"/> replaces the
     /// process, so the caller can dispose native resources (the tray NotifyIcon) first.</summary>
@@ -75,6 +93,7 @@ public partial class UpdateViewModel : ObservableObject
         }
 
         State = UpdateState.Checking;
+        LastErrorMessage = null;
 
         try
         {
@@ -92,10 +111,11 @@ public partial class UpdateViewModel : ObservableObject
             AvailableVersion = info.TargetFullRelease.Version.ToString();
             State = UpdateState.ReadyToApply;
         }
-        catch
+        catch (Exception ex)
         {
             // Best-effort background feature - a transient network/GitHub failure shouldn't surface
             // as an error dialog. The next scheduled recheck will simply try again.
+            LastErrorMessage = ex.Message;
             State = UpdateState.Error;
         }
     }
@@ -114,5 +134,13 @@ public partial class UpdateViewModel : ObservableObject
 
     private bool CanApply() => State == UpdateState.ReadyToApply && _pendingUpdate is not null;
 
-    partial void OnStateChanged(UpdateState value) => ApplyCommand.NotifyCanExecuteChanged();
+    partial void OnStateChanged(UpdateState value)
+    {
+        ApplyCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    partial void OnAvailableVersionChanged(string? value) => OnPropertyChanged(nameof(StatusText));
+
+    partial void OnLastErrorMessageChanged(string? value) => OnPropertyChanged(nameof(StatusText));
 }

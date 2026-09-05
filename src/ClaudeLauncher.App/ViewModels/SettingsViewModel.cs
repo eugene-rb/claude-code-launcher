@@ -30,6 +30,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool autoResumeOnLimitEnabled;
 
     [ObservableProperty]
+    private bool crossAgentHandoffEnabled = true;
+
+    [ObservableProperty]
     private ResumeMode resumeMode;
 
     /// <summary>When on, the launcher registers its <c>usage-statusline</c> bridge as Claude Code's
@@ -93,6 +96,7 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         AutoResumeOnLimitEnabled = settings.AutoResumeOnLimitEnabled;
+        CrossAgentHandoffEnabled = settings.CrossAgentHandoffEnabled;
         ResumeMode = settings.ResumeMode;
         // The file on disk is the source of truth - it can drift from the saved flag if the user
         // edited settings.json by hand or another tool took the status-line slot.
@@ -115,6 +119,8 @@ public partial class SettingsViewModel : ObservableObject
         AgentRows.FirstOrDefault(r => r.Kind == kind)?.Arguments ?? AgentCatalog.Get(kind).DefaultArguments;
 
     partial void OnAutoResumeOnLimitEnabledChanged(bool value) => Persist();
+
+    partial void OnCrossAgentHandoffEnabledChanged(bool value) => Persist();
 
     partial void OnUsageStatusLineBridgeEnabledChanged(bool value)
     {
@@ -191,6 +197,7 @@ public partial class SettingsViewModel : ObservableObject
             DefaultArguments = claudeSettings?.Arguments ?? string.Empty,
             AgentSettings = agentSettings,
             AutoResumeOnLimitEnabled = AutoResumeOnLimitEnabled,
+            CrossAgentHandoffEnabled = CrossAgentHandoffEnabled,
             ResumeMode = ResumeMode,
             UsageStatusLineBridgeEnabled = UsageStatusLineBridgeEnabled,
             ChainedStatusLine = _chainedStatusLine,

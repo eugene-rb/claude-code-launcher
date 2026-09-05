@@ -169,6 +169,16 @@ public class ProcessLauncherServiceTests
     }
 
     [Fact]
+    public void BuildLaunchArguments_FreshHandoff_AppendsPromptAsOneArgument()
+    {
+        var arguments = ProcessLauncherService.BuildLaunchArguments(
+            AgentCatalog.CodexCli, "--model o3", resume: false,
+            initialPrompt: "checkpoint を読んで続行");
+
+        Assert.Equal(["--model", "o3", "checkpoint を読んで続行"], arguments);
+    }
+
+    [Fact]
     public void BuildLaunchArguments_KimiResuming_AppendsContinueFlag()
     {
         var arguments = ProcessLauncherService.BuildLaunchArguments(AgentCatalog.KimiCodeCli, "", resume: true);

@@ -32,6 +32,11 @@ public sealed class SessionProfile
     /// flag - a project that hits its usage limit behaves the same as any other.</summary>
     public DateTimeOffset? AutoResumeAt { get; set; }
 
+    /// <summary>The CLI to launch when <see cref="AutoResumeAt"/> fires. Null means resume the
+    /// profile's current CLI natively; a different value means create a shared checkpoint and start
+    /// that CLI with a continuation prompt.</summary>
+    public AgentKind? AutoResumeAgentKind { get; set; }
+
     public SessionProfile Clone() => new()
     {
         Id = Id,
@@ -46,5 +51,6 @@ public sealed class SessionProfile
         ScheduledAt = ScheduledAt,
         DailyTime = DailyTime,
         AutoResumeAt = AutoResumeAt,
+        AutoResumeAgentKind = AutoResumeAgentKind,
     };
 }

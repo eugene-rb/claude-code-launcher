@@ -35,14 +35,14 @@ public class AgentCatalogTests
     }
 
     [Fact]
-    public void OnlyClaudeCode_SupportsUsageLimitAutoResume()
+    public void ClaudeAndCodex_SupportUsageLimitAutoResume()
     {
         // A false positive here stops and relaunches a live process - unlike the read-only activity
         // badge/preview, this must stay opt-in per agent until a real usage-limit event format is
         // confirmed for the other CLIs.
         foreach (var agent in AgentCatalog.All)
         {
-            Assert.Equal(agent.Kind == AgentKind.ClaudeCode, agent.SupportsUsageLimitAutoResume);
+            Assert.Equal(agent.Kind is AgentKind.ClaudeCode or AgentKind.CodexCli, agent.SupportsUsageLimitAutoResume);
         }
     }
 

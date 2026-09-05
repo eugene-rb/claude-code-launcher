@@ -9,9 +9,8 @@ namespace ClaudeLauncher.App.Services;
 /// <c>~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl</c> in JSONL, one folder per day - unlike Claude
 /// Code, files aren't bucketed by working directory, so finding "the transcript for this project"
 /// means scanning recent days' files and reading each one's own recorded cwd. Classification/preview
-/// use <see cref="GenericChatJsonlHeuristics"/> (unverified against real Codex output).
-/// <see cref="SupportsUsageLimitAutoResume"/> is false: no Codex-equivalent of Claude Code's
-/// "rate_limit" transcript event is documented anywhere this was researched.</summary>
+/// use <see cref="GenericChatJsonlHeuristics"/>. Codex also writes account-window usage and reset
+/// timestamps on <c>event_msg/token_count</c> records; those records drive limit detection.</summary>
 public sealed class CodexTranscriptSource(string? sessionsRootOverride = null) : IAgentTranscriptSource
 {
     private const int MaxDaysToScan = 30;
@@ -21,7 +20,7 @@ public sealed class CodexTranscriptSource(string? sessionsRootOverride = null) :
     private readonly string _sessionsRoot = sessionsRootOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "sessions");
 
-    public bool SupportsUsageLimitAutoResume => false;
+    public bool SupportsUsageLimitAutoResume => true;
 
     public string? FindMostRecentTranscriptFile(string workingDirectory) =>
         EnumerateCandidateFiles(notBefore: null)
@@ -35,7 +34,8 @@ public sealed class CodexTranscriptSource(string? sessionsRootOverride = null) :
 
     public string? ExtractPreview(string tailText) => GenericChatJsonlHeuristics.ExtractPreview(tailText, "あなた", "Codex");
 
-    public DateTimeOffset? TryParseUsageLimitEvent(string jsonlLine) => null;
+    public DateTimeOffset? TryParseUsageLimitEvent(string jsonlLine) =>
+        CodexRateLimitParser.TryParseReachedReset(jsonlLine);
 
     /// <summary>Walks day-folders newest-first, bounded by <see cref="MaxDaysToScan"/> and
     /// <see cref="MaxFilesToScan"/> so a machine with years of history doesn't stall the dashboard's

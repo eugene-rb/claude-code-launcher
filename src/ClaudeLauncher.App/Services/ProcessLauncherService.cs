@@ -54,12 +54,13 @@ public sealed class ProcessLauncherService
         AgentDefinition agent,
         string profileArguments,
         bool resume,
-        ResumeMode resumeMode = ResumeMode.FullSession)
+        ResumeMode resumeMode = ResumeMode.FullSession,
+        string? initialPrompt = null)
     {
         var arguments = CommandLineTokenizer.Tokenize(profileArguments);
         if (!resume)
         {
-            return arguments;
+            return string.IsNullOrWhiteSpace(initialPrompt) ? arguments : [.. arguments, initialPrompt];
         }
 
         var filtered = StripResumeFlags(arguments, agent);
@@ -68,6 +69,11 @@ public sealed class ProcessLauncherService
         if (resumeMode == ResumeMode.CompactFirst && agent.CompactResumeExtraToken is { } compactToken)
         {
             composed = [.. composed, compactToken];
+        }
+
+        if (!string.IsNullOrWhiteSpace(initialPrompt))
+        {
+            composed = [.. composed, initialPrompt];
         }
 
         return composed;
@@ -150,10 +156,11 @@ public sealed class ProcessLauncherService
         string executable,
         string argumentsText,
         bool resume = false,
-        ResumeMode resumeMode = ResumeMode.FullSession)
+        ResumeMode resumeMode = ResumeMode.FullSession,
+        string? initialPrompt = null)
     {
         var agent = AgentCatalog.Get(agentKind);
-        var arguments = BuildLaunchArguments(agent, argumentsText, resume, resumeMode);
+        var arguments = BuildLaunchArguments(agent, argumentsText, resume, resumeMode, initialPrompt);
         var script = BuildScript(profile.Name, executable, arguments);
         var encoded = EncodeCommand(script);
 

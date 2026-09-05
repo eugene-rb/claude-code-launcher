@@ -69,4 +69,16 @@ public class GenericChatJsonlHeuristicsTests
     {
         Assert.Null(Source.ExtractPreview("garbage\nmore garbage"));
     }
+
+    [Fact]
+    public void CodexResponseItemPayload_IsClassifiedAndShownInPreview()
+    {
+        var text = """{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"continue the task"}]}}""" + "\n"
+            + """{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}}""";
+
+        Assert.Equal(ProjectActivityState.Idle, Source.Classify(text));
+        var preview = Source.ExtractPreview(text);
+        Assert.Contains("continue the task", preview);
+        Assert.Contains("done", preview);
+    }
 }

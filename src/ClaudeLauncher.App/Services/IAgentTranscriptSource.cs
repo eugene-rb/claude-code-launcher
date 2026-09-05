@@ -32,12 +32,12 @@ public interface IAgentTranscriptSource
     string? ExtractPreview(string tailText);
 
     /// <summary>Parses one transcript line for a usage-limit event, returning its reset time. Always
-    /// null for agents with <see cref="SupportsUsageLimitAutoResume"/> false - not "not implemented
-    /// yet", but "no verified event format exists to parse".</summary>
+    /// null for agents with <see cref="SupportsUsageLimitAutoResume"/> false.</summary>
     DateTimeOffset? TryParseUsageLimitEvent(string jsonlLine);
 
     /// <summary>Whether usage-limit auto-resume (which stops and relaunches a running process) is safe
     /// to enable for this agent. False for every agent but Claude Code, since a false positive here is
-    /// destructive - unlike the read-only activity badge/preview, which degrade harmlessly.</summary>
+    /// destructive - unlike the read-only activity badge/preview, which degrade harmlessly. Claude
+    /// Code and Codex currently expose verified formats.</summary>
     bool SupportsUsageLimitAutoResume { get; }
 }

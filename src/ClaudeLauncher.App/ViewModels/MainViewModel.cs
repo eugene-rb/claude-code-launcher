@@ -25,6 +25,7 @@ public partial class MainViewModel : ObservableObject
     private readonly SessionProfileStore _store;
     private readonly ProcessLauncherService _launcher;
     private readonly ClaudeAccountUsageTracker _usageTracker;
+    private readonly CodexUsageSnapshotReader _codexUsageReader;
     private readonly DispatcherTimer _scheduleTimer;
     private readonly DispatcherTimer _dashboardTimer;
 
@@ -65,6 +66,18 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool weeklyWindowUsageIsMeasured;
 
+    [ObservableProperty]
+    private double? codexPrimaryUsagePercent;
+
+    [ObservableProperty]
+    private double? codexSecondaryUsagePercent;
+
+    [ObservableProperty]
+    private string codexPrimaryWindowLabel = "Codex 主要制限";
+
+    [ObservableProperty]
+    private string codexSecondaryWindowLabel = "Codex 第2制限";
+
     public MainViewModel()
         : this(new SessionProfileStore(), new ProcessLauncherService())
     {
@@ -75,12 +88,13 @@ public partial class MainViewModel : ObservableObject
         _store = store;
         _launcher = launcher;
         _usageTracker = new ClaudeAccountUsageTracker();
+        _codexUsageReader = new CodexUsageSnapshotReader();
         Update = new UpdateViewModel();
         Settings = new SettingsViewModel(new AppSettingsStore(), new StartupRegistrationService(), Update);
 
         foreach (var profile in _store.Load())
         {
-            Sessions.Add(new SessionItemViewModel(profile, _launcher, Settings));
+            Sessions.Add(CreateSessionItem(profile));
         }
 
         ConfigFiles = new ConfigFilesViewModel(Sessions);
@@ -90,6 +104,7 @@ public partial class MainViewModel : ObservableObject
         // real percentage from the moment the window opens, not just after the first schedule tick.
         _usageTracker.Poll(DateTimeOffset.Now);
         RefreshUsagePercentages(DateTimeOffset.Now);
+        RefreshCodexUsage(DateTimeOffset.Now);
 
         _scheduleTimer = new DispatcherTimer { Interval = ScheduleCheckInterval };
         _scheduleTimer.Tick += (_, _) => CheckSchedules();
@@ -124,6 +139,7 @@ public partial class MainViewModel : ObservableObject
         // rather than getting its own.
         _usageTracker.Poll(now);
         RefreshUsagePercentages(now);
+        RefreshCodexUsage(now);
 
         foreach (var session in Sessions)
         {
@@ -166,6 +182,37 @@ public partial class MainViewModel : ObservableObject
         IdleCount = Sessions.Count(s => s.ActivityState == ProjectActivityState.Idle);
     }
 
+    private void RefreshCodexUsage(DateTimeOffset now)
+    {
+        var snapshot = _codexUsageReader.ReadLatest();
+        CodexPrimaryUsagePercent = snapshot?.Primary is { ResetsAt: var primaryReset } primary && primaryReset > now
+            ? primary.UsedPercentage
+            : null;
+        CodexSecondaryUsagePercent = snapshot?.Secondary is { ResetsAt: var secondaryReset } secondary && secondaryReset > now
+            ? secondary.UsedPercentage
+            : null;
+
+        if (snapshot?.Primary is { } primaryWindow)
+        {
+            CodexPrimaryWindowLabel = $"Codex {FormatWindow(primaryWindow.WindowMinutes)}";
+        }
+
+        if (snapshot?.Secondary is { } secondaryWindow)
+        {
+            CodexSecondaryWindowLabel = $"Codex {FormatWindow(secondaryWindow.WindowMinutes)}";
+        }
+    }
+
+    private static string FormatWindow(int minutes) => minutes switch
+    {
+        300 => "5時間制限",
+        10080 => "週次制限",
+        43200 => "月次制限",
+        _ when minutes % 1440 == 0 => $"{minutes / 1440}日制限",
+        _ when minutes % 60 == 0 => $"{minutes / 60}時間制限",
+        _ => $"{minutes}分制限",
+    };
+
     private void RefreshUsagePercentages(DateTimeOffset now)
     {
         (SessionWindowUsagePercent, SessionWindowUsageIsMeasured) = EvaluateUsageWindow(
@@ -202,7 +249,7 @@ public partial class MainViewModel : ObservableObject
 
     public void AddProfile(SessionProfile profile)
     {
-        Sessions.Add(new SessionItemViewModel(profile, _launcher, Settings));
+        Sessions.Add(CreateSessionItem(profile));
         RefreshActivitySummary();
         Persist();
     }
@@ -211,7 +258,7 @@ public partial class MainViewModel : ObservableObject
     {
         foreach (var profile in profiles)
         {
-            Sessions.Add(new SessionItemViewModel(profile, _launcher, Settings));
+            Sessions.Add(CreateSessionItem(profile));
         }
 
         RefreshActivitySummary();
@@ -229,6 +276,13 @@ public partial class MainViewModel : ObservableObject
         Sessions.Remove(item);
         RefreshActivitySummary();
         Persist();
+    }
+
+    private SessionItemViewModel CreateSessionItem(SessionProfile profile)
+    {
+        var item = new SessionItemViewModel(profile, _launcher, Settings);
+        item.ProfileChanged += (_, _) => Persist();
+        return item;
     }
 
     private void Persist() => _store.Save(Sessions.Select(s => s.Profile));

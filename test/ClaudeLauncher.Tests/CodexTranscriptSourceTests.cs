@@ -57,14 +57,25 @@ public class CodexTranscriptSourceTests
     }
 
     [Fact]
-    public void SupportsUsageLimitAutoResume_IsFalse()
+    public void SupportsUsageLimitAutoResume_IsTrue()
     {
-        Assert.False(new CodexTranscriptSource().SupportsUsageLimitAutoResume);
+        Assert.True(new CodexTranscriptSource().SupportsUsageLimitAutoResume);
     }
 
     [Fact]
-    public void TryParseUsageLimitEvent_AlwaysReturnsNull()
+    public void TryParseUsageLimitEvent_AtOneHundredPercent_ReturnsResetTime()
     {
-        Assert.Null(new CodexTranscriptSource().TryParseUsageLimitEvent("""{"error":"rate_limit"}"""));
+        const string line = """{"timestamp":"2026-09-06T03:00:00Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":100.0,"window_minutes":300,"resets_at":1788646938},"secondary":null}}}""";
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1788646938),
+            new CodexTranscriptSource().TryParseUsageLimitEvent(line));
+    }
+
+    [Fact]
+    public void TryParseUsageLimitEvent_BelowLimit_ReturnsNull()
+    {
+        const string line = """{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":99.0,"window_minutes":300,"resets_at":1788646938}}}}""";
+
+        Assert.Null(new CodexTranscriptSource().TryParseUsageLimitEvent(line));
     }
 }
