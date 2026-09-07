@@ -279,7 +279,7 @@
                                                     </ui:SplitButton>
                                                     <ui:Button Content="続きから" ToolTip="直近の会話を続きから再開して起動" Appearance="Secondary" Margin="0,0,6,0"
                                                                Icon="{ui:SymbolIcon Symbol=ArrowClockwise24}" Command="{Binding StartResumeCommand}" />
-                                                    <ui:Button Content="AI引継ぎ" ToolTip="Claude Code と Codex CLI のもう片方へ共有チェックポイント経由で引き継ぐ" Appearance="Secondary" Margin="0,0,6,0"
+                                                    <ui:Button Content="AI引継ぎ" ToolTip="Claude Code と Codex CLI のもう片方へ共有チェックポイント経由で引き継ぐ（実行中でも可。現在のセッションを停止してから引き継ぎます）" Appearance="Secondary" Margin="0,0,6,0"
                                                                Icon="{ui:SymbolIcon Symbol=ArrowSync24}" Command="{Binding StartHandoffCommand}" />
                                                     <ui:Button Content="停止" Appearance="Danger" Margin="0,0,6,0"
                                                                Icon="{ui:SymbolIcon Symbol=Stop24}" Command="{Binding StopCommand}" />

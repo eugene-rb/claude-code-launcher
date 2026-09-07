@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using ClaudeLauncher.App.Models;
 using ClaudeLauncher.App.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace ClaudeLauncher.App.ViewModels;
 
@@ -31,6 +32,18 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool crossAgentHandoffEnabled = true;
+
+    /// <summary>Spoken announcements at each unattended milestone. The service is owned here (rather
+    /// than by <see cref="MainViewModel"/>) so the toggle and the volume slider drive the same instance
+    /// every session card announces through - see <see cref="Voice"/>.</summary>
+    [ObservableProperty]
+    private bool voiceNotificationEnabled = true;
+
+    /// <summary>Volume as the slider shows it, 0-100. Stored as 0.0-1.0 in
+    /// <see cref="AppSettings.VoiceNotificationVolume"/>; kept as a percentage here because a WPF
+    /// Slider bound to a 0-1 range with a whole-number TickFrequency is awkward to configure.</summary>
+    [ObservableProperty]
+    private double voiceNotificationVolumePercent = 70;
 
     [ObservableProperty]
     private ResumeMode resumeMode;
@@ -72,6 +85,11 @@ public partial class SettingsViewModel : ObservableObject
     /// card here and the update-ready banner on the main window reflect one piece of state.</summary>
     public UpdateViewModel Update { get; }
 
+    /// <summary>The one player every session announces through, kept in step with the toggle and
+    /// slider above. Handed to each <see cref="SessionItemViewModel"/> by <see cref="MainViewModel"/>
+    /// so cues from different projects queue behind one another instead of talking over each other.</summary>
+    public VoiceNotificationService Voice { get; } = new();
+
     public SettingsViewModel()
         : this(new AppSettingsStore(), new StartupRegistrationService(), new UpdateViewModel())
     {
@@ -97,6 +115,9 @@ public partial class SettingsViewModel : ObservableObject
 
         AutoResumeOnLimitEnabled = settings.AutoResumeOnLimitEnabled;
         CrossAgentHandoffEnabled = settings.CrossAgentHandoffEnabled;
+        VoiceNotificationEnabled = settings.VoiceNotificationEnabled;
+        VoiceNotificationVolumePercent = Math.Clamp(settings.VoiceNotificationVolume, 0, 1) * 100;
+        ApplyVoiceSettings();
         ResumeMode = settings.ResumeMode;
         // The file on disk is the source of truth - it can drift from the saved flag if the user
         // edited settings.json by hand or another tool took the status-line slot.
@@ -121,6 +142,35 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnAutoResumeOnLimitEnabledChanged(bool value) => Persist();
 
     partial void OnCrossAgentHandoffEnabledChanged(bool value) => Persist();
+
+    partial void OnVoiceNotificationEnabledChanged(bool value)
+    {
+        ApplyVoiceSettings();
+        Persist();
+    }
+
+    partial void OnVoiceNotificationVolumePercentChanged(double value)
+    {
+        ApplyVoiceSettings();
+        Persist();
+    }
+
+    private void ApplyVoiceSettings()
+    {
+        Voice.Enabled = VoiceNotificationEnabled;
+        Voice.Volume = Math.Clamp(VoiceNotificationVolumePercent / 100.0, 0, 1);
+    }
+
+    /// <summary>Plays one announcement at the current volume. The slider is otherwise unusable - its
+    /// effect is inaudible until something happens to trigger a cue, which unattended is exactly when
+    /// nobody is watching. Deliberately bypasses <see cref="VoiceNotificationEnabled"/>: pressing the
+    /// button is an explicit request to hear it.</summary>
+    [RelayCommand]
+    private void TestVoice()
+    {
+        ApplyVoiceSettings();
+        Voice.PlayTest();
+    }
 
     partial void OnUsageStatusLineBridgeEnabledChanged(bool value)
     {
@@ -198,6 +248,8 @@ public partial class SettingsViewModel : ObservableObject
             AgentSettings = agentSettings,
             AutoResumeOnLimitEnabled = AutoResumeOnLimitEnabled,
             CrossAgentHandoffEnabled = CrossAgentHandoffEnabled,
+            VoiceNotificationEnabled = VoiceNotificationEnabled,
+            VoiceNotificationVolume = Math.Clamp(VoiceNotificationVolumePercent / 100.0, 0, 1),
             ResumeMode = ResumeMode,
             UsageStatusLineBridgeEnabled = UsageStatusLineBridgeEnabled,
             ChainedStatusLine = _chainedStatusLine,

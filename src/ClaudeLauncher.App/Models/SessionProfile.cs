@@ -37,6 +37,21 @@ public sealed class SessionProfile
     /// that CLI with a continuation prompt.</summary>
     public AgentKind? AutoResumeAgentKind { get; set; }
 
+    /// <summary>True when the armed <see cref="AutoResumeAt"/> is a park - both accounts were
+    /// exhausted, so the task is waiting on whichever resets first (see
+    /// <see cref="Services.FailoverAction.WaitForReset"/>) rather than continuing elsewhere right
+    /// away. Only affects what the dashboard badge says and which announcement plays; the relaunch
+    /// itself is the same either way. Defaults to false, which is what every profile saved before this
+    /// field existed deserializes as - and is correct for them, since without the cooldown ledger no
+    /// resume could have been a both-limited park.</summary>
+    public bool AutoResumeIsWaitingForReset { get; set; }
+
+    /// <summary>When this task last moved between CLIs, for <see cref="Services.HandoffPlanner.MinimumDwell"/>.
+    /// Null if it never has. Per profile rather than account-wide on purpose: this bounds how often
+    /// <em>this task</em> may bounce, which is what stops a handoff loop; the accounts' own limits live
+    /// in <see cref="Services.AgentCooldownStore"/>.</summary>
+    public DateTimeOffset? LastHandoffAt { get; set; }
+
     public SessionProfile Clone() => new()
     {
         Id = Id,
@@ -52,5 +67,7 @@ public sealed class SessionProfile
         DailyTime = DailyTime,
         AutoResumeAt = AutoResumeAt,
         AutoResumeAgentKind = AutoResumeAgentKind,
+        AutoResumeIsWaitingForReset = AutoResumeIsWaitingForReset,
+        LastHandoffAt = LastHandoffAt,
     };
 }

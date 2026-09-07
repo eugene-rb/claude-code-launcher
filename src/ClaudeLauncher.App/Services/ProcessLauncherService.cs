@@ -66,9 +66,13 @@ public sealed class ProcessLauncherService
         var filtered = StripResumeFlags(arguments, agent);
         var composed = ComposeResumeTemplate(agent.ResumeArgumentTemplate, filtered);
 
+        // Both of these occupy the CLI's single positional prompt slot, so only one can be appended.
+        // `/compact` wins: it is the mode the user explicitly chose, and the resumed session is nudged
+        // back into the task afterwards (see SessionItemViewModel.ScheduleResumeNudge). Appending both
+        // would hand the CLI two positional arguments, where the second is either ignored or rejected.
         if (resumeMode == ResumeMode.CompactFirst && agent.CompactResumeExtraToken is { } compactToken)
         {
-            composed = [.. composed, compactToken];
+            return [.. composed, compactToken];
         }
 
         if (!string.IsNullOrWhiteSpace(initialPrompt))

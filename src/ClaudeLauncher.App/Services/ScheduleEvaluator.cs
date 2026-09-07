@@ -43,15 +43,27 @@ public static class ScheduleEvaluator
     /// (see <see cref="IsAutoResumeStale"/>).</summary>
     public static readonly TimeSpan AutoResumeStaleWindow = TimeSpan.FromHours(6);
 
+    /// <summary>The same bound, but for a resume that was parked because both accounts were exhausted
+    /// (<see cref="SessionProfile.AutoResumeIsWaitingForReset"/>). Those are armed for whenever the
+    /// first account frees up, which for a weekly limit is days away - and a machine that sleeps
+    /// overnight would blow straight past <see cref="AutoResumeStaleWindow"/> and cancel a wait the
+    /// user was explicitly told about on the dashboard. The reason a normal resume goes stale (the
+    /// user has long since moved on) doesn't apply the same way here: a park is a deliberate, visible
+    /// multi-day wait, and by the time it is due the account it was waiting on really is free.</summary>
+    public static readonly TimeSpan ParkedAutoResumeStaleWindow = TimeSpan.FromDays(7);
+
+    private static TimeSpan StaleWindowFor(SessionProfile profile) =>
+        profile.AutoResumeIsWaitingForReset ? ParkedAutoResumeStaleWindow : AutoResumeStaleWindow;
+
     /// <summary>Unlike <see cref="ShouldFire"/>, running state isn't considered here — the caller
     /// stops the still-blocked process itself right before relaunching.</summary>
     public static bool ShouldAutoResume(SessionProfile profile, DateTimeOffset now) =>
-        profile.AutoResumeAt is { } at && now >= at && now - at <= AutoResumeStaleWindow;
+        profile.AutoResumeAt is { } at && now >= at && now - at <= StaleWindowFor(profile);
 
     /// <summary>True once an auto-resume is far enough past due that it should be cancelled instead
-    /// of fired (see <see cref="AutoResumeStaleWindow"/>).</summary>
+    /// of fired (see <see cref="AutoResumeStaleWindow"/> and <see cref="ParkedAutoResumeStaleWindow"/>).</summary>
     public static bool IsAutoResumeStale(SessionProfile profile, DateTimeOffset now) =>
-        profile.AutoResumeAt is { } at && now - at > AutoResumeStaleWindow;
+        profile.AutoResumeAt is { } at && now - at > StaleWindowFor(profile);
 
     /// <summary>True if a just-detected usage-limit reset time is still worth arming as
     /// <see cref="SessionProfile.AutoResumeAt"/>. An auto-resume relaunch continues the same

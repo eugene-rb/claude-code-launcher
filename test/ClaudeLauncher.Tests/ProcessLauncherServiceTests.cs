@@ -110,6 +110,47 @@ public class ProcessLauncherServiceTests
     }
 
     [Fact]
+    public void BuildLaunchArguments_CompactFirstAndAnInitialPrompt_KeepsOnlyCompact()
+    {
+        // Both want the CLI's single positional prompt slot. Appending both would hand `claude` two
+        // positional arguments, and an unattended resume would either drop one silently or fail to
+        // start at all; the user's explicit CompactFirst choice wins and the typed nudge re-engages
+        // the task afterwards (SessionItemViewModel.ScheduleResumeNudge).
+        var arguments = ProcessLauncherService.BuildLaunchArguments(
+            AgentCatalog.ClaudeCode, "", resume: true, ResumeMode.CompactFirst, initialPrompt: "続行してください");
+
+        Assert.Equal(["-c", "/compact"], arguments);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_FullSessionResumeWithAnInitialPrompt_PassesItAsThePositionalPrompt()
+    {
+        // How an unattended same-agent resume restarts the interrupted task, on Claude Code...
+        var claude = ProcessLauncherService.BuildLaunchArguments(
+            AgentCatalog.ClaudeCode, "", resume: true, ResumeMode.FullSession, initialPrompt: "続行してください");
+
+        Assert.Equal(["-c", "続行してください"], claude);
+
+        // ...and, identically, on Codex - whose resume is a subcommand rather than a flag
+        // (`codex resume [OPTIONS] [SESSION_ID] [PROMPT]`), so the prompt still has to land last.
+        var codex = ProcessLauncherService.BuildLaunchArguments(
+            AgentCatalog.CodexCli, "", resume: true, ResumeMode.FullSession, initialPrompt: "続行してください");
+
+        Assert.Equal(["resume", "--last", "続行してください"], codex);
+    }
+
+    [Fact]
+    public void BuildLaunchArguments_CompactFirstOnAnAgentWithNoCompactToken_StillPassesThePrompt()
+    {
+        // Codex has no verified /compact equivalent, so CompactFirst must not swallow the continuation
+        // prompt for it - that would leave a resumed Codex session sitting idle forever.
+        var arguments = ProcessLauncherService.BuildLaunchArguments(
+            AgentCatalog.CodexCli, "", resume: true, ResumeMode.CompactFirst, initialPrompt: "続行してください");
+
+        Assert.Equal(["resume", "--last", "続行してください"], arguments);
+    }
+
+    [Fact]
     public void BuildLaunchArguments_NotResuming_IgnoresResumeModeEntirely()
     {
         // A fresh session has no conversation to compact, so /compact must not leak into it.

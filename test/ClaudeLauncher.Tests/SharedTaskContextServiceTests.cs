@@ -48,4 +48,76 @@ public class SharedTaskContextServiceTests
         Assert.Equal("original task", result[0].Text);
         Assert.Equal("update 23", result[^1].Text);
     }
+
+    [Fact]
+    public void ExtractOriginalTask_ReadsTheSectionBackOutOfACheckpoint()
+    {
+        var checkpoint = $"""
+            # Shared task checkpoint
+
+            - Captured: 2026-09-08T12:00:00.0000000+09:00
+
+            {SharedTaskContextService.OriginalTaskHeading}
+
+            ランチャーに双方向の引き継ぎを実装する。
+            音声通知も共通機能にする。
+
+            ## Recent conversation
+
+            ### User
+
+            共有チェックポイントを読んで続行してください。
+            """;
+
+        Assert.Equal(
+            "ランチャーに双方向の引き継ぎを実装する。\n音声通知も共通機能にする。",
+            SharedTaskContextService.ExtractOriginalTask(checkpoint)?.Replace("\r\n", "\n"));
+    }
+
+    [Fact]
+    public void ExtractOriginalTask_CheckpointWithoutTheSection_ReturnsNull()
+    {
+        // Checkpoints written before the section existed, and anything else unparseable.
+        Assert.Null(SharedTaskContextService.ExtractOriginalTask("# Shared task checkpoint\n\n## Recent conversation\n"));
+        Assert.Null(SharedTaskContextService.ExtractOriginalTask(string.Empty));
+    }
+
+    [Fact]
+    public void ExtractOriginalTask_EmptySection_ReturnsNull()
+    {
+        var checkpoint = $"{SharedTaskContextService.OriginalTaskHeading}\n\n\n## Recent conversation\n";
+
+        Assert.Null(SharedTaskContextService.ExtractOriginalTask(checkpoint));
+    }
+
+    /// <summary>The circular-reference case this section exists for: after the first handoff, the
+    /// transcript's earliest user message is the continuation prompt pointing back at the checkpoint,
+    /// so re-deriving the task from the transcript loses the actual request. Carrying the section
+    /// through keeps it intact across any number of handoffs.</summary>
+    [Fact]
+    public void ExtractOriginalTask_SurvivesRepeatedCaptures()
+    {
+        var task = "巨大なリファクタリングを最後まで完了させる。";
+        var checkpoint = $"{SharedTaskContextService.OriginalTaskHeading}\n\n{task}\n\n## Recent conversation\n";
+
+        for (var handoff = 0; handoff < 5; handoff++)
+        {
+            var carried = SharedTaskContextService.ExtractOriginalTask(checkpoint);
+            Assert.Equal(task, carried);
+
+            // What the next capture writes: the carried task, plus a conversation whose first user
+            // message is only the "go read the checkpoint" prompt.
+            checkpoint = $"""
+                {SharedTaskContextService.OriginalTaskHeading}
+
+                {carried}
+
+                ## Recent conversation
+
+                ### User
+
+                {SharedTaskContextService.BuildContinuationPrompt("C:\\checkpoint.md", AgentKind.ClaudeCode)}
+                """;
+        }
+    }
 }

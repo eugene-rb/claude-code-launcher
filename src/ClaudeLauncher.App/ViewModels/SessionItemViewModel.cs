@@ -30,10 +30,18 @@ public partial class SessionItemViewModel : ObservableObject
 
     private readonly ProcessLauncherService _launcher;
     private readonly SettingsViewModel _settings;
+    private readonly AgentCooldownStore _cooldowns;
+    private readonly VoiceNotificationService _voice;
     private readonly SharedTaskContextService _sharedContext = new();
     private TranscriptLimitWatcher _limitWatcher = new(AgentTranscriptSourceRegistry.Get(AgentKind.ClaudeCode));
     private AgentKind _activeAgentKind;
     private Process? _process;
+
+    /// <summary>Previous <see cref="ActivityState"/>, so the "awaiting approval" announcement fires on
+    /// the transition into that state instead of on the state itself. <see cref="RefreshActivityState"/>
+    /// runs every two seconds for every project; keying the cue off the current value alone would
+    /// speak over the user every two seconds for as long as the prompt stayed unanswered.</summary>
+    private ProjectActivityState _previousActivityState = ProjectActivityState.Unknown;
 
     public SessionProfile Profile { get; private set; }
 
@@ -114,11 +122,18 @@ public partial class SessionItemViewModel : ObservableObject
 
     partial void OnCustomLaunchAgentKindChanged(AgentKind value) => CustomLaunchArguments = _settings.GetArguments(value);
 
-    public SessionItemViewModel(SessionProfile profile, ProcessLauncherService launcher, SettingsViewModel settings)
+    public SessionItemViewModel(
+        SessionProfile profile,
+        ProcessLauncherService launcher,
+        SettingsViewModel settings,
+        AgentCooldownStore cooldowns,
+        VoiceNotificationService voice)
     {
         Profile = profile;
         _launcher = launcher;
         _settings = settings;
+        _cooldowns = cooldowns;
+        _voice = voice;
         name = profile.Name;
         workingDirectory = profile.WorkingDirectory;
         accentColorHex = profile.AccentColorHex;
@@ -203,22 +218,36 @@ public partial class SessionItemViewModel : ObservableObject
             return false;
         }
 
+        var now = DateTimeOffset.Now;
+
+        // Record the limit account-wide before deciding anything: every other project's failover, and
+        // this one's next hop back, depends on knowing this agent is spent.
+        _cooldowns.Set(_activeAgentKind, at, now);
+
         var counterpart = _settings.CrossAgentHandoffEnabled
             ? SharedTaskContextService.GetCounterpart(_activeAgentKind)
             : null;
-        var candidate = counterpart is null
-            ? at + TimeSpan.FromMinutes(5)
-            : DateTimeOffset.Now + TimeSpan.FromSeconds(5);
-        if (!ScheduleEvaluator.ShouldArmAutoResume(candidate, DateTimeOffset.Now))
+
+        var plan = HandoffPlanner.Plan(
+            _activeAgentKind,
+            at,
+            counterpart,
+            counterpart is { } other ? _cooldowns.Get(other, now) : null,
+            Profile.LastHandoffAt,
+            now);
+
+        if (!ScheduleEvaluator.ShouldArmAutoResume(plan.FireAt, now))
         {
             // Same reset time as an auto-resume already fired for this session - see
             // ScheduleEvaluator.ShouldArmAutoResume for why this must not re-arm.
             return false;
         }
 
-        Profile.AutoResumeAt = candidate;
-        Profile.AutoResumeAgentKind = counterpart;
+        Profile.AutoResumeAt = plan.FireAt;
+        Profile.AutoResumeAgentKind = plan.TargetAgent == _activeAgentKind ? null : plan.TargetAgent;
+        Profile.AutoResumeIsWaitingForReset = plan.Action == FailoverAction.WaitForReset;
         RefreshLimitStatusSummary();
+        _voice.Play(plan.Action == FailoverAction.WaitForReset ? VoiceCue.WaitingForReset : VoiceCue.LimitDetected);
         return true;
     }
 
@@ -232,8 +261,7 @@ public partial class SessionItemViewModel : ObservableObject
     {
         if (ScheduleEvaluator.IsAutoResumeStale(Profile, now))
         {
-            Profile.AutoResumeAt = null;
-            Profile.AutoResumeAgentKind = null;
+            ClearAutoResume();
             LimitStatusSummary = "自動再開の予定時刻を過ぎたため取り消されました";
             return true;
         }
@@ -245,10 +273,11 @@ public partial class SessionItemViewModel : ObservableObject
 
         var sourceAgent = _activeAgentKind;
         var targetAgent = Profile.AutoResumeAgentKind ?? sourceAgent;
+        var isHandoff = targetAgent != sourceAgent;
         try
         {
             string? continuationPrompt = null;
-            if (targetAgent != sourceAgent)
+            if (isHandoff)
             {
                 var checkpoint = _sharedContext.Capture(Profile.WorkingDirectory, sourceAgent);
                 continuationPrompt = SharedTaskContextService.BuildContinuationPrompt(checkpoint, sourceAgent);
@@ -259,34 +288,55 @@ public partial class SessionItemViewModel : ObservableObject
                 Stop();
             }
 
-            if (targetAgent == sourceAgent)
-            {
-                Launch(resume: true, agentKindOverride: targetAgent);
-            }
-            else
+            if (isHandoff)
             {
                 Launch(resume: false, agentKindOverride: targetAgent, initialPrompt: continuationPrompt);
                 Profile.AgentKind = targetAgent;
+                Profile.LastHandoffAt = now;
                 AgentDisplayName = AgentCatalog.Get(targetAgent).DisplayName;
+            }
+            else
+            {
+                // Resume with the continuation instruction as the CLI's positional prompt, which both
+                // `claude -c "…"` and `codex resume --last "…"` accept, so the resumed session picks the
+                // task back up on its own. CompactFirst is the exception: its `/compact` takes that one
+                // positional slot (see ProcessLauncherService.BuildLaunchArguments), so that mode still
+                // relies on the typed nudge below.
+                var useCompactSlot = _settings.ResumeMode == ResumeMode.CompactFirst
+                    && AgentCatalog.Get(targetAgent).CompactResumeExtraToken is not null;
+                Launch(
+                    resume: true,
+                    agentKindOverride: targetAgent,
+                    initialPrompt: useCompactSlot ? null : SharedTaskContextService.ResumeContinuationPrompt);
+
+                if (useCompactSlot)
+                {
+                    ScheduleResumeNudge();
+                }
             }
         }
         catch (Exception)
         {
             // Unattended path: never retry-storm on failure.
-            Profile.AutoResumeAt = null;
-            Profile.AutoResumeAgentKind = null;
+            ClearAutoResume();
             LimitStatusSummary = "自動再開に失敗しました";
+            _voice.Play(VoiceCue.ResumeFailed);
             return true;
         }
 
+        ClearAutoResume();
+        RefreshLimitStatusSummary();
+        _voice.Play(isHandoff
+            ? VoiceNotificationService.HandoffCueFor(targetAgent) ?? VoiceCue.AutoResume
+            : VoiceCue.AutoResume);
+        return true;
+    }
+
+    private void ClearAutoResume()
+    {
         Profile.AutoResumeAt = null;
         Profile.AutoResumeAgentKind = null;
-        RefreshLimitStatusSummary();
-        if (targetAgent == sourceAgent)
-        {
-            ScheduleResumeNudge();
-        }
-        return true;
+        Profile.AutoResumeIsWaitingForReset = false;
     }
 
     /// <summary>Types "resume" into the console <see cref="ResumeNudgeDelay"/> after an auto-resume
@@ -317,11 +367,16 @@ public partial class SessionItemViewModel : ObservableObject
     /// nothing fired.</summary>
     public void RefreshLimitStatusSummary()
     {
-        LimitStatusSummary = Profile.AutoResumeAt is { } at
-            ? Profile.AutoResumeAgentKind is { } target
-                ? $"制限検知 → {AgentCatalog.Get(target).DisplayName} へ引き継ぎ予定 ({at.LocalDateTime:HH:mm:ss})"
-                : $"制限検知 → {at.LocalDateTime:yyyy/MM/dd HH:mm} に自動再開予定"
-            : null;
+        LimitStatusSummary = (Profile.AutoResumeAt, Profile.AutoResumeAgentKind, Profile.AutoResumeIsWaitingForReset) switch
+        {
+            (null, _, _) => null,
+            // Both accounts are spent, so the badge has to say what is being waited on - otherwise a
+            // park that is hours or days out is indistinguishable from a handoff that silently failed.
+            ({ } at, { } target, true) => $"両方が利用上限 → {at.LocalDateTime:MM/dd HH:mm} に {AgentCatalog.Get(target).DisplayName} で再開予定",
+            ({ } at, null, true) => $"両方が利用上限 → {at.LocalDateTime:MM/dd HH:mm} に再開予定",
+            ({ } at, { } target, false) => $"制限検知 → {AgentCatalog.Get(target).DisplayName} へ引き継ぎ予定 ({at.LocalDateTime:HH:mm:ss})",
+            ({ } at, null, false) => $"制限検知 → {at.LocalDateTime:yyyy/MM/dd HH:mm} に自動再開予定",
+        };
     }
 
     /// <summary>Recomputes the human-readable schedule badge. Public so <see cref="MainViewModel"/>'s
@@ -363,7 +418,7 @@ public partial class SessionItemViewModel : ObservableObject
             // No transcript at all - "awaiting approval" still wins if the marker says so (the hook
             // that writes it doesn't depend on the transcript existing), but there's nothing to preview.
             PreviewText = null;
-            ActivityState = hasFreshMarker ? ProjectActivityState.AwaitingApproval : ProjectActivityState.Unknown;
+            SetActivityState(hasFreshMarker ? ProjectActivityState.AwaitingApproval : ProjectActivityState.Unknown);
             return;
         }
 
@@ -374,7 +429,7 @@ public partial class SessionItemViewModel : ObservableObject
             // Showing "待機" (or a stale preview) forever for a project nobody has touched in days
             // would be misleading, so both are cleared rather than left showing the last exchange.
             PreviewText = null;
-            ActivityState = hasFreshMarker ? ProjectActivityState.AwaitingApproval : ProjectActivityState.Unknown;
+            SetActivityState(hasFreshMarker ? ProjectActivityState.AwaitingApproval : ProjectActivityState.Unknown);
             return;
         }
 
@@ -388,11 +443,25 @@ public partial class SessionItemViewModel : ObservableObject
             // Precedence: awaiting approval always wins, even over a transcript that looks idle (the
             // permission prompt itself isn't written to the transcript, so the two signals can't
             // disagree in a way that should be resolved any other way).
-            ActivityState = ProjectActivityState.AwaitingApproval;
+            SetActivityState(ProjectActivityState.AwaitingApproval);
             return;
         }
 
-        ActivityState = (text is null ? null : source.Classify(text)) ?? ProjectActivityState.Unknown;
+        SetActivityState((text is null ? null : source.Classify(text)) ?? ProjectActivityState.Unknown);
+    }
+
+    /// <summary>Assigns <see cref="ActivityState"/> and announces a newly-blocked session. The cue is
+    /// tied to the transition, not the state: this runs on the 2-second dashboard tick, so announcing
+    /// the state itself would repeat every two seconds until the prompt was answered.</summary>
+    private void SetActivityState(ProjectActivityState state)
+    {
+        if (state == ProjectActivityState.AwaitingApproval && _previousActivityState != ProjectActivityState.AwaitingApproval)
+        {
+            _voice.Play(VoiceCue.AwaitingApproval);
+        }
+
+        _previousActivityState = state;
+        ActivityState = state;
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -410,22 +479,35 @@ public partial class SessionItemViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanHandoff))]
     private void StartHandoff()
     {
-        var sourceAgent = Profile.AgentKind;
+        var sourceAgent = IsRunning ? _activeAgentKind : Profile.AgentKind;
         if (SharedTaskContextService.GetCounterpart(sourceAgent) is not { } targetAgent)
         {
             return;
         }
 
+        // Capture before stopping, for the same reason the automatic path does: Stop kills the process
+        // tree, and a CLI killed mid-write can lose the tail of the transcript being captured.
         var checkpoint = _sharedContext.Capture(Profile.WorkingDirectory, sourceAgent);
         var prompt = SharedTaskContextService.BuildContinuationPrompt(checkpoint, sourceAgent);
+
+        if (IsRunning)
+        {
+            Stop();
+        }
+
         Launch(resume: false, agentKindOverride: targetAgent, initialPrompt: prompt);
         Profile.AgentKind = targetAgent;
+        Profile.LastHandoffAt = DateTimeOffset.Now;
         AgentDisplayName = AgentCatalog.Get(targetAgent).DisplayName;
+        _voice.Play(VoiceNotificationService.HandoffCueFor(targetAgent) ?? VoiceCue.AutoResume);
         ProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private bool CanHandoff() => !IsRunning
-        && SharedTaskContextService.GetCounterpart(Profile.AgentKind) is not null;
+    /// <summary>Unlike the other launch commands, this one is available while the session is running:
+    /// handing a live task to the other CLI is the point, and <see cref="StartHandoff"/> stops the
+    /// current process itself once it has captured the checkpoint.</summary>
+    private bool CanHandoff() =>
+        SharedTaskContextService.GetCounterpart(IsRunning ? _activeAgentKind : Profile.AgentKind) is not null;
 
     /// <summary>Launches with <see cref="CustomLaunchAgentKind"/>/<see cref="CustomLaunchArguments"/>
     /// instead of the project's own AI/default arguments - a one-off override, never written back to

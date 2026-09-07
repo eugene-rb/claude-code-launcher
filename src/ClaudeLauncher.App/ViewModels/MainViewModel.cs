@@ -26,6 +26,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ProcessLauncherService _launcher;
     private readonly ClaudeAccountUsageTracker _usageTracker;
     private readonly CodexUsageSnapshotReader _codexUsageReader;
+    private readonly AgentCooldownStore _cooldowns;
     private readonly DispatcherTimer _scheduleTimer;
     private readonly DispatcherTimer _dashboardTimer;
 
@@ -89,6 +90,7 @@ public partial class MainViewModel : ObservableObject
         _launcher = launcher;
         _usageTracker = new ClaudeAccountUsageTracker();
         _codexUsageReader = new CodexUsageSnapshotReader();
+        _cooldowns = new AgentCooldownStore();
         Update = new UpdateViewModel();
         Settings = new SettingsViewModel(new AppSettingsStore(), new StartupRegistrationService(), Update);
 
@@ -140,6 +142,10 @@ public partial class MainViewModel : ObservableObject
         _usageTracker.Poll(now);
         RefreshUsagePercentages(now);
         RefreshCodexUsage(now);
+
+        // Drop cooldowns whose reset has passed, so a freed-up account becomes a handoff target again
+        // instead of the ledger permanently believing both are exhausted.
+        _cooldowns.PruneExpired(now);
 
         foreach (var session in Sessions)
         {
@@ -201,6 +207,24 @@ public partial class MainViewModel : ObservableObject
         {
             CodexSecondaryWindowLabel = $"Codex {FormatWindow(secondaryWindow.WindowMinutes)}";
         }
+
+        // Codex reports its own account usage in every rollout, so an exhausted Codex account is
+        // knowable here even with no Codex session running. That is what lets a Claude Code project
+        // avoid handing its task to a Codex account that has nothing left - the case that otherwise
+        // has the two CLIs trading work back and forth. See HandoffPlanner.
+        RecordExhaustedWindow(AgentKind.CodexCli, snapshot?.Primary?.UsedPercentage, snapshot?.Primary?.ResetsAt, now);
+        RecordExhaustedWindow(AgentKind.CodexCli, snapshot?.Secondary?.UsedPercentage, snapshot?.Secondary?.ResetsAt, now);
+    }
+
+    /// <summary>Records an agent as rate-limited when a window reports itself full. Usage within a
+    /// window only ever climbs until it resets, so a reading of 100% with a reset still ahead stays
+    /// true however old the reading is - no freshness check is needed here.</summary>
+    private void RecordExhaustedWindow(AgentKind kind, double? usedPercentage, DateTimeOffset? resetsAt, DateTimeOffset now)
+    {
+        if (usedPercentage >= 100 && resetsAt is { } reset)
+        {
+            _cooldowns.Set(kind, reset, now);
+        }
     }
 
     private static string FormatWindow(int minutes) => minutes switch
@@ -224,6 +248,13 @@ public partial class MainViewModel : ObservableObject
             now, ClaudeAccountUsageTracker.WeeklyWindow,
             _usageTracker.WeeklyWindowLastRealPercent, _usageTracker.WeeklyWindowLastRealAt,
             _usageTracker.WeeklyWindowResetsAt, _usageTracker.WeeklyWindowBaselineTokens);
+
+        // Only the measured figures are used here. The token-based estimate is calibrated against a
+        // guessed baseline, so treating it as proof the account is spent could park a task that still
+        // had capacity; a limit the estimate misses is still caught by the transcript's own rate_limit
+        // event when the session actually hits it.
+        RecordExhaustedWindow(AgentKind.ClaudeCode, _usageTracker.SessionWindowLastRealPercent, _usageTracker.SessionWindowResetsAt, now);
+        RecordExhaustedWindow(AgentKind.ClaudeCode, _usageTracker.WeeklyWindowLastRealPercent, _usageTracker.WeeklyWindowResetsAt, now);
     }
 
     /// <summary>Prefers a fresh real reading from the status-line snapshot; otherwise falls back to the
@@ -280,7 +311,7 @@ public partial class MainViewModel : ObservableObject
 
     private SessionItemViewModel CreateSessionItem(SessionProfile profile)
     {
-        var item = new SessionItemViewModel(profile, _launcher, Settings);
+        var item = new SessionItemViewModel(profile, _launcher, Settings, _cooldowns, Settings.Voice);
         item.ProfileChanged += (_, _) => Persist();
         return item;
     }

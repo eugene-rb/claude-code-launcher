@@ -15,6 +15,14 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
     private const int TranscriptTailBytes = 1024 * 1024;
     private const int MaxMessages = 16;
     private const int MaxMessageChars = 6000;
+    private const int MaxOriginalTaskChars = 4000;
+
+    /// <summary>Heading of the section that carries the task's original request forward, verbatim,
+    /// through every handoff. See <see cref="ExtractOriginalTask"/> for why it has to be carried
+    /// rather than re-derived.</summary>
+    public const string OriginalTaskHeading = "## 元のタスク";
+
+    private const string RecentConversationHeading = "## Recent conversation";
 
     private readonly string _root = rootOverride ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -30,6 +38,8 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
             ? []
             : ExtractMessages(ReadTranscriptExcerpts(transcriptPath));
 
+        var originalTask = CarryForwardOriginalTask(checkpointPath, messages);
+
         var builder = new StringBuilder()
             .AppendLine("# Shared task checkpoint")
             .AppendLine()
@@ -40,7 +50,11 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
             .AppendLine()
             .AppendLine("The working tree is the source of truth. Inspect its current files and git diff before changing anything. Continue the unfinished task; do not restart completed work.")
             .AppendLine()
-            .AppendLine("## Recent conversation");
+            .AppendLine(OriginalTaskHeading)
+            .AppendLine()
+            .AppendLine(originalTask)
+            .AppendLine()
+            .AppendLine(RecentConversationHeading);
 
         if (messages.Count == 0)
         {
@@ -60,11 +74,83 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
         return checkpointPath;
     }
 
+    /// <summary>Returns the original request to write into this capture: the one already carried by
+    /// the previous checkpoint if there is one, otherwise the earliest user message in the transcript
+    /// just read.</summary>
+    private static string CarryForwardOriginalTask(string checkpointPath, IReadOnlyList<CheckpointMessage> messages)
+    {
+        string? task = null;
+        try
+        {
+            if (File.Exists(checkpointPath))
+            {
+                task = ExtractOriginalTask(File.ReadAllText(checkpointPath));
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Fall through to deriving it from the transcript.
+        }
+
+        task ??= messages.FirstOrDefault(message => message.Role == "User")?.Text;
+        if (string.IsNullOrWhiteSpace(task))
+        {
+            return "(元の依頼を特定できませんでした。作業ツリーと git log から目的を復元してください。)";
+        }
+
+        var trimmed = task.Trim();
+        return trimmed.Length > MaxOriginalTaskChars ? trimmed[..MaxOriginalTaskChars] + "…" : trimmed;
+    }
+
+    /// <summary>Reads the <see cref="OriginalTaskHeading"/> section out of an existing checkpoint, or
+    /// null if it has none (a checkpoint written before this section existed).
+    ///
+    /// <para>This is what stops a long unattended run from forgetting what it was asked to do. The
+    /// checkpoint file is rewritten in place on every handoff, and each capture reads the transcript of
+    /// the agent that was just running - whose <em>first</em> user message is the continuation prompt
+    /// telling it to go read this very file. So from the second handoff on, deriving the task from the
+    /// transcript alone yields "read the checkpoint", and the actual request is gone. Carrying the
+    /// section forward verbatim keeps the original intact no matter how many times the task changes
+    /// hands, which is exactly the case a multi-day job hits.</para></summary>
+    public static string? ExtractOriginalTask(string checkpointText)
+    {
+        var lines = checkpointText.Replace("\r\n", "\n").Split('\n');
+        var start = Array.FindIndex(lines, line => line.Trim() == OriginalTaskHeading);
+        if (start < 0)
+        {
+            return null;
+        }
+
+        var body = new StringBuilder();
+        for (var i = start + 1; i < lines.Length; i++)
+        {
+            if (lines[i].StartsWith("## ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            body.AppendLine(lines[i]);
+        }
+
+        var text = body.ToString().Trim();
+        return text.Length == 0 ? null : text;
+    }
+
     public static string BuildContinuationPrompt(string checkpointPath, AgentKind sourceAgent)
     {
         var source = AgentCatalog.Get(sourceAgent).DisplayName;
         return $"{source} から未完了タスクを引き継ぎます。共有チェックポイント「{checkpointPath}」を最初に読み、次に作業ツリーと git diff を確認してください。完了済みの作業をやり直さず、中断地点から自律的に続行し、必要な検証まで完了してください。";
     }
+
+    /// <summary>Handed to a same-agent auto-resume as the CLI's positional prompt argument
+    /// (<c>claude -c "…"</c> / <c>codex resume --last "…"</c>, both verified to accept one). A resume
+    /// reopens the previous conversation at an idle prompt - it does not carry on with what the usage
+    /// limit interrupted - so something has to restart it. Passing it as a launch argument is what
+    /// makes an unattended resume work identically on Claude Code and Codex, and it succeeds where
+    /// <see cref="ConsoleInputInjector"/> can't: that path is ASCII-only by construction, so it could
+    /// never have delivered this instruction in the first place.</summary>
+    public const string ResumeContinuationPrompt =
+        "利用上限による中断から復帰しました。作業ツリーと git diff で現在地を確認し、完了済みの作業をやり直さず、中断地点から自律的に続行して、必要な検証まで完了してください。";
 
     public static AgentKind? GetCounterpart(AgentKind sourceAgent) => sourceAgent switch
     {

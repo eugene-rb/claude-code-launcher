@@ -19,8 +19,13 @@ public sealed class AppSettings
 
     /// <summary>When true, a running session's transcript is polled for a usage-limit ("rate_limit")
     /// event; on detection the session is auto-relaunched with `-c` 5 minutes after the reset time.
-    /// Applies to every project - see <see cref="ViewModels.SessionItemViewModel.TryDetectUsageLimit"/>.</summary>
-    public bool AutoResumeOnLimitEnabled { get; set; }
+    /// Applies to every project - see <see cref="ViewModels.SessionItemViewModel.TryDetectUsageLimit"/>.
+    /// <para>Defaults to true because <see cref="CrossAgentHandoffEnabled"/> also defaults to true and
+    /// detection is what feeds it: with this off, <c>TryDetectUsageLimit</c> returns before it ever
+    /// looks at the transcript, so the entire unattended failover chain is inert on a fresh install.
+    /// Existing installs are unaffected - their saved value is always written out by
+    /// <see cref="ViewModels.SettingsViewModel"/> and so survives the upgrade.</para></summary>
+    public bool AutoResumeOnLimitEnabled { get; set; } = true;
 
     /// <summary>When a Claude Code or Codex CLI session reaches its account limit, immediately
     /// continue with the other CLI using a shared transcript checkpoint instead of waiting for the
@@ -38,6 +43,22 @@ public sealed class AppSettings
     /// <c>used_percentage</c> figures instead of a token estimate. Toggled from the 設定 tab; see
     /// <see cref="Services.ClaudeStatusLineInstaller"/>.</summary>
     public bool UsageStatusLineBridgeEnabled { get; set; }
+
+    /// <summary>When true, the launcher speaks an announcement at each unattended milestone (a limit
+    /// was detected, the task moved to the other CLI, it was picked back up, both accounts ran out, an
+    /// automatic resume failed). Common to Claude Code and Codex, with one honest exception: the
+    /// "awaiting approval" cue comes from a Claude Code-only hook (see
+    /// <see cref="Services.StatusMarkerStore"/>) and has no Codex equivalent.</summary>
+    public bool VoiceNotificationEnabled { get; set; } = true;
+
+    /// <summary>Announcement volume, 0.0-1.0. Applied by scaling the samples (see
+    /// <see cref="Services.WavAudio.Scale"/>), so it is the launcher's own level and independent of
+    /// the Windows mixer. Defaults audibly rather than to 0 so a fresh install isn't silent in a way
+    /// that reads as broken; a settings file written before this field existed simply leaves the
+    /// initializer's value in place, since the deserializer only assigns properties the JSON actually
+    /// carries. Silence is <see cref="VoiceNotificationEnabled"/>'s job, so an explicit 0 here is kept
+    /// as the user's choice rather than corrected.</summary>
+    public double VoiceNotificationVolume { get; set; } = 0.7;
 
     /// <summary>Raw JSON of the <c>statusLine</c> object that was already in ~/.claude/settings.json
     /// when the bridge was installed, stashed here so <see cref="Services.UsageStatusLineBridge"/> can

@@ -34,7 +34,13 @@ public sealed class CodexUsageSnapshotReader(string? sessionsRootOverride = null
 
                 foreach (var line in tail.Split('\n').Reverse())
                 {
-                    if (CodexRateLimitParser.TryParseSnapshot(line) is { } snapshot)
+                    // Codex emits token_count records whose rate_limits carry no windows at all
+                    // (verified on this machine: lines with "limit_id":"premium" have both primary and
+                    // secondary null). Those are not a reading of zero usage, they are the absence of a
+                    // reading - returning one would blank the usage bars and, worse, hide an exhausted
+                    // Codex account from AgentCooldownStore. Keep scanning for a record that has one.
+                    if (CodexRateLimitParser.TryParseSnapshot(line) is { } snapshot
+                        && (snapshot.Primary is not null || snapshot.Secondary is not null))
                     {
                         return snapshot;
                     }

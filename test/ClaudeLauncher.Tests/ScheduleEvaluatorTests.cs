@@ -272,4 +272,52 @@ public class ScheduleEvaluatorTests
 
         Assert.False(ScheduleEvaluator.ShouldArmAutoResume(at, at));
     }
+
+    [Fact]
+    public void ShouldAutoResume_ParkedWaitDueAfterALongSleep_StillFires()
+    {
+        // A both-accounts-exhausted park can legitimately be armed days out (a weekly reset). The
+        // 6-hour window that keeps a normal resume from relaunching a session the user moved on from
+        // would cancel exactly the wait the dashboard promised, on any machine that sleeps overnight.
+        var profile = new SessionProfile
+        {
+            AutoResumeAt = new DateTimeOffset(2026, 9, 8, 3, 0, 0, Offset),
+            AutoResumeIsWaitingForReset = true,
+        };
+
+        var afterAnOvernightSleep = new DateTimeOffset(2026, 9, 8, 13, 0, 0, Offset);
+
+        Assert.True(ScheduleEvaluator.ShouldAutoResume(profile, afterAnOvernightSleep));
+        Assert.False(ScheduleEvaluator.IsAutoResumeStale(profile, afterAnOvernightSleep));
+    }
+
+    [Fact]
+    public void ShouldAutoResume_ParkedWait_StillGoesStaleEventually()
+    {
+        var profile = new SessionProfile
+        {
+            AutoResumeAt = new DateTimeOffset(2026, 9, 1, 3, 0, 0, Offset),
+            AutoResumeIsWaitingForReset = true,
+        };
+
+        var weeksLater = new DateTimeOffset(2026, 9, 20, 3, 0, 0, Offset);
+
+        Assert.False(ScheduleEvaluator.ShouldAutoResume(profile, weeksLater));
+        Assert.True(ScheduleEvaluator.IsAutoResumeStale(profile, weeksLater));
+    }
+
+    [Fact]
+    public void ShouldAutoResume_OrdinaryResume_KeepsTheNarrowStaleWindow()
+    {
+        var profile = new SessionProfile
+        {
+            AutoResumeAt = new DateTimeOffset(2026, 9, 8, 3, 0, 0, Offset),
+            AutoResumeIsWaitingForReset = false,
+        };
+
+        var afterAnOvernightSleep = new DateTimeOffset(2026, 9, 8, 13, 0, 0, Offset);
+
+        Assert.False(ScheduleEvaluator.ShouldAutoResume(profile, afterAnOvernightSleep));
+        Assert.True(ScheduleEvaluator.IsAutoResumeStale(profile, afterAnOvernightSleep));
+    }
 }

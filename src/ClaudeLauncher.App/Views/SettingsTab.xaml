@@ -66,7 +66,7 @@
                     <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
                         <TextBlock Text="利用上限からの自動再開" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
                         <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.6">
-                            応答の途中で利用上限に達したことを検知したら、自動でタスクを続行します。Claude Code と Codex CLI の実際のトランスクリプトに記録された制限情報を使用します。アプリを起動している間(タスクバーに常駐中も含む)のみ有効です。
+                            応答の途中で利用上限に達したことを検知したら、自動でタスクを続行します。Claude Code と Codex CLI の実際のトランスクリプトに記録された制限情報を使用します。下の「Claude ↔ Codex 自動引き継ぎ」もこの検知を入口にしているため、ここをOFFにすると引き継ぎも動きません。アプリを起動している間(タスクバーに常駐中も含む)のみ有効です。
                         </TextBlock>
                     </StackPanel>
 
@@ -85,12 +85,53 @@
                     <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
                         <TextBlock Text="Claude ↔ Codex 自動引き継ぎ" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
                         <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.6"
-                                   Text="片方が利用上限に達したら、直近の会話を共有チェックポイントへ保存し、もう片方を約5秒後に起動して中断地点から続行します。共有データはプロジェクト内ではなく AppData に保存されます。OFFの場合は同じAIをリセット時刻の5分後に再開します。" />
+                                   Text="片方が利用上限に達したら、直近の会話を共有チェックポイントへ保存し、もう片方を約5秒後に起動して中断地点から続行します。両方とも上限に達している場合は、先にリセットされる方まで待ってからそちらで再開するため、往復を繰り返して止まることはありません。共有データはプロジェクト内ではなく AppData に保存されます。OFFの場合は同じAIをリセット時刻の5分後に再開します。" />
                     </StackPanel>
 
                     <ui:ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
                                      IsChecked="{Binding CrossAgentHandoffEnabled}" />
                 </Grid>
+            </ui:Card>
+
+            <ui:Card Margin="0,0,0,16">
+                <StackPanel Margin="4">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center">
+                            <TextBlock Text="音声通知" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <TextBlock TextWrapping="Wrap" FontSize="12" Opacity="0.6"
+                                       Text="無人で動いている間の節目を秘書口調の音声でお知らせします。上限の検知、もう片方のAIへの引き継ぎ、作業の再開、両方が上限に達して待機に入ったとき、自動再開に失敗したとき。Claude Code と Codex CLI に共通です。" />
+                        </StackPanel>
+
+                        <ui:ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                         IsChecked="{Binding VoiceNotificationEnabled}" />
+                    </Grid>
+
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="音量" FontSize="12" Opacity="0.7" VerticalAlignment="Center" />
+                        <Slider Grid.Column="1" Margin="12,0" VerticalAlignment="Center"
+                                Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                Value="{Binding VoiceNotificationVolumePercent}" />
+                        <TextBlock Grid.Column="2" MinWidth="42" TextAlignment="Right" FontSize="12" VerticalAlignment="Center"
+                                   Text="{Binding VoiceNotificationVolumePercent, StringFormat='{}{0:F0}%'}" />
+                        <ui:Button Grid.Column="3" Content="テスト再生" Appearance="Secondary" Margin="12,0,0,0"
+                                   Command="{Binding TestVoiceCommand}" />
+                    </Grid>
+
+                    <TextBlock TextWrapping="Wrap" FontSize="11" Opacity="0.45" Margin="0,10,0,0"
+                               Text="音量はこのアプリ内での相対値です（波形の振幅を調整しているため、Windows側のミキサー音量とは別に効きます）。「承認待ち」の通知だけは Claude Code 専用のフックが元になっているため、Codex CLI のプロジェクトでは鳴りません。" />
+                </StackPanel>
             </ui:Card>
 
             <ui:Card Margin="0,0,0,16">
