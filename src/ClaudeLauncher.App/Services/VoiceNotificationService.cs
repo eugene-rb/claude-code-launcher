@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using System.IO;
-using System.Media;
 using System.Windows;
+using NAudio.CoreAudioApi;
+using NAudio.Wave;
 
 namespace ClaudeLauncher.App.Services;
 
@@ -47,8 +48,8 @@ public enum VoiceCue
 /// <summary>Plays the spoken notification cues. Shared by every project regardless of which CLI it
 /// runs, so the limit/handoff/resume/failure announcements are common to Claude Code and Codex alike.
 ///
-/// <para>Volume is applied by scaling the samples (see <see cref="WavAudio.Scale"/>) because
-/// <see cref="SoundPlayer"/> has no volume of its own. That makes the slider an app-level control,
+/// <para>Volume is applied by scaling the samples (see <see cref="WavAudio.Scale"/>) because the
+/// playback device has no per-clip volume of its own. That makes the slider an app-level control,
 /// independent of the Windows mixer.</para>
 ///
 /// <para>Nothing here is allowed to throw at its caller. Every entry point is wrapped, and a missing
@@ -119,7 +120,7 @@ public sealed class VoiceNotificationService
         // dispatcher. The settings button is invoked on that dispatcher, whereas the old code tried
         // to resolve it inside Task.Run's MTA worker. On some installations that lookup fails, so
         // the test appeared to do nothing. Read and scale the small WAV before queuing playback;
-        // the worker now deals only with an ordinary byte array and SoundPlayer.
+        // the worker now deals only with an ordinary byte array.
         byte[] wav;
         try
         {
@@ -131,19 +132,23 @@ public sealed class VoiceNotificationService
             return;
         }
 
-        // SoundPlayer ultimately calls into the Windows multimedia APIs. The thread-pool uses MTA
-        // threads, which can silently produce no sound on some endpoint/driver combinations even
-        // though the WAV was loaded successfully. Give each queued playback an STA thread instead;
-        // the gate keeps cues serialized, and the thread is background-only so it cannot delay exit.
+        // System.Media.SoundPlayer can silently produce no output with some Windows endpoint
+        // drivers. WasapiOut addresses the current default render endpoint directly instead.
+        // The gate keeps cues serialized, and the thread is background-only so it cannot delay exit.
         var playbackThread = new Thread(() =>
         {
             _playbackGate.Wait();
             try
             {
-                using var stream = new MemoryStream(wav);
-                using var player = new SoundPlayer(stream);
-                player.Load();
-                player.PlaySync();
+                using var stream = new MemoryStream(wav, writable: false);
+                using var reader = new WaveFileReader(stream);
+                using var player = new WasapiOut(AudioClientShareMode.Shared, useEventSync: false, latency: 100);
+                player.Init(reader);
+                player.Play();
+                while (player.PlaybackState == PlaybackState.Playing)
+                {
+                    Thread.Sleep(20);
+                }
                 LastError = null;
             }
             catch (Exception ex)
