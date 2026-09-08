@@ -54,12 +54,14 @@ public static class WavAudio
     }
 
     /// <summary>Maps a 0.0-1.0 slider position to an amplitude factor. Loudness is perceived roughly
-    /// logarithmically, so a linear amplitude slider spends most of its travel in a range that all
-    /// sounds equally loud; squaring gives the lower half of the slider somewhere useful to go.</summary>
+    /// logarithmically, so the low end needs a boost rather than another reduction: squaring the
+    /// slider made a 25% setting play at only 6.25% amplitude, which rendered spoken cues effectively
+    /// inaudible. A square-root curve keeps fine control near full volume while making ordinary low
+    /// settings useful.</summary>
     public static double PerceptualAmplitude(double sliderValue)
     {
         var clamped = Math.Clamp(sliderValue, 0.0, 1.0);
-        return clamped * clamped;
+        return Math.Sqrt(clamped);
     }
 
     /// <summary>Builds a mono 16-bit PCM sine tone. Used only as the fallback cue when a voice asset

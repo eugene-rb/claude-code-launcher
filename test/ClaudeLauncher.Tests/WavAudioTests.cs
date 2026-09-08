@@ -150,8 +150,8 @@ public class WavAudioTests
         Assert.Equal(1.0, WavAudio.PerceptualAmplitude(1));
         Assert.Equal(0.0, WavAudio.PerceptualAmplitude(-5));
         Assert.Equal(1.0, WavAudio.PerceptualAmplitude(5));
-        // Squaring gives the lower half of the slider somewhere useful to go.
-        Assert.True(WavAudio.PerceptualAmplitude(0.5) < 0.5);
+        // The low end is boosted so useful speech remains audible at modest settings.
+        Assert.True(WavAudio.PerceptualAmplitude(0.5) > 0.5);
         Assert.True(WavAudio.PerceptualAmplitude(0.5) > WavAudio.PerceptualAmplitude(0.25));
     }
 
