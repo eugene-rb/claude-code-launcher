@@ -13,7 +13,9 @@ namespace ClaudeLauncher.App.ViewModels;
 /// Display properties mirror the profile so edits (via <see cref="ApplyProfile"/>) refresh bound UI.
 /// The executable and launch arguments are not part of the profile - every session launches with the
 /// per-agent default in <see cref="SettingsViewModel"/> for <see cref="SessionProfile.AgentKind"/>
-/// unless the user picks a one-off AI/arguments override via <see cref="StartCustomCommand"/>.</summary>
+/// unless the user picks a one-off AI/arguments override via <see cref="StartCustomCommand"/>. That
+/// override leaves the configured default alone, but is remembered as the most recently used AI so a
+/// later <see cref="StartResumeCommand"/> can reopen the correct conversation.</summary>
 public partial class SessionItemViewModel : ObservableObject
 {
     /// <summary>How stale a project's own transcript may be before its activity badge is hidden, for
@@ -472,7 +474,7 @@ public partial class SessionItemViewModel : ObservableObject
     /// session, for when the user wants to pick a conversation back up without waiting on schedule or
     /// usage-limit detection.</summary>
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private void StartResume() => Launch(resume: true);
+    private void StartResume() => Launch(resume: true, agentKindOverride: Profile.LastUsedAgentKind);
 
     /// <summary>Manually moves the latest Claude/Codex task to the other CLI through the same shared
     /// checkpoint used by automatic limit failover.</summary>
@@ -510,8 +512,9 @@ public partial class SessionItemViewModel : ObservableObject
         SharedTaskContextService.GetCounterpart(IsRunning ? _activeAgentKind : Profile.AgentKind) is not null;
 
     /// <summary>Launches with <see cref="CustomLaunchAgentKind"/>/<see cref="CustomLaunchArguments"/>
-    /// instead of the project's own AI/default arguments - a one-off override, never written back to
-    /// <see cref="Profile"/> or <see cref="SettingsViewModel"/>.</summary>
+    /// instead of the project's own AI/default arguments - a one-off override which never changes
+    /// the project's configured AI or settings. The selected AI is still recorded as the last used
+    /// one, so "continue" can resume the conversation it created.</summary>
     [RelayCommand(CanExecute = nameof(CanStart))]
     private void StartCustom()
     {
@@ -535,8 +538,10 @@ public partial class SessionItemViewModel : ObservableObject
         _activeAgentKind = agentKind;
         AgentDisplayName = AgentCatalog.Get(agentKind).DisplayName;
         Profile.LastLaunchedAt = DateTimeOffset.Now;
+        Profile.LastUsedAgentKind = agentKind;
         _limitWatcher = new TranscriptLimitWatcher(AgentTranscriptSourceRegistry.Get(agentKind));
         _limitWatcher.Reset(DateTimeOffset.Now);
+        ProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private bool CanStart() => !IsRunning;

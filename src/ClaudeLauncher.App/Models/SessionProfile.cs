@@ -14,6 +14,13 @@ public sealed class SessionProfile
     /// (enum value 0) so profiles saved before this field existed keep working unchanged.</summary>
     public AgentKind AgentKind { get; set; } = AgentKind.ClaudeCode;
 
+    /// <summary>The CLI used by this project's most recent launch. This is intentionally separate
+    /// from <see cref="AgentKind"/>, which is the project's configured default: choosing a one-off
+    /// AI must not rewrite that default, but "continue" must reopen the conversation in the AI that
+    /// actually created it. Null keeps profiles saved before this field existed compatible and makes
+    /// them fall back to <see cref="AgentKind"/>.</summary>
+    public AgentKind? LastUsedAgentKind { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
 
     public DateTimeOffset? LastLaunchedAt { get; set; }
@@ -59,6 +66,7 @@ public sealed class SessionProfile
         WorkingDirectory = WorkingDirectory,
         AccentColorHex = AccentColorHex,
         AgentKind = AgentKind,
+        LastUsedAgentKind = LastUsedAgentKind,
         CreatedAt = CreatedAt,
         LastLaunchedAt = LastLaunchedAt,
         ScheduleEnabled = ScheduleEnabled,

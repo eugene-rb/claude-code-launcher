@@ -97,14 +97,31 @@ public sealed class VoiceNotificationService
     private void PlayNow(VoiceCue cue)
     {
         var amplitude = WavAudio.PerceptualAmplitude(Volume);
+
+        // Application.GetResourceStream resolves WPF pack resources through the application's
+        // dispatcher. The settings button is invoked on that dispatcher, whereas the old code tried
+        // to resolve it inside Task.Run's MTA worker. On some installations that lookup fails, so
+        // the test appeared to do nothing. Read and scale the small WAV before queuing playback;
+        // the worker now deals only with an ordinary byte array and SoundPlayer.
+        byte[] wav;
+        try
+        {
+            wav = WavAudio.Scale(LoadAsset(cue), amplitude);
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+            return;
+        }
+
         _ = Task.Run(async () =>
         {
             await _playbackGate.WaitAsync().ConfigureAwait(false);
             try
             {
-                var wav = WavAudio.Scale(LoadAsset(cue), amplitude);
                 using var stream = new MemoryStream(wav);
                 using var player = new SoundPlayer(stream);
+                player.Load();
                 player.PlaySync();
                 LastError = null;
             }
