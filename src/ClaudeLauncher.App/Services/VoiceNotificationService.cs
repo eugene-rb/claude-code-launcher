@@ -131,9 +131,13 @@ public sealed class VoiceNotificationService
             return;
         }
 
-        _ = Task.Run(async () =>
+        // SoundPlayer ultimately calls into the Windows multimedia APIs. The thread-pool uses MTA
+        // threads, which can silently produce no sound on some endpoint/driver combinations even
+        // though the WAV was loaded successfully. Give each queued playback an STA thread instead;
+        // the gate keeps cues serialized, and the thread is background-only so it cannot delay exit.
+        var playbackThread = new Thread(() =>
         {
-            await _playbackGate.WaitAsync().ConfigureAwait(false);
+            _playbackGate.Wait();
             try
             {
                 using var stream = new MemoryStream(wav);
@@ -151,7 +155,13 @@ public sealed class VoiceNotificationService
             {
                 _playbackGate.Release();
             }
-        });
+        })
+        {
+            IsBackground = true,
+            Name = "ClaudeLauncher voice playback",
+        };
+        playbackThread.SetApartmentState(ApartmentState.STA);
+        playbackThread.Start();
     }
 
     private bool TryClaimSlot(VoiceCue cue)
