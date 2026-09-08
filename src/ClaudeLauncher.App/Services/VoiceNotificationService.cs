@@ -200,7 +200,7 @@ public sealed class VoiceNotificationService
             using var stream = resource.Stream;
             using var buffer = new MemoryStream();
             stream.CopyTo(buffer);
-            return buffer.ToArray();
+            return WavAudio.NormalizeLengths(buffer.ToArray());
         }
         catch (Exception e) when (e is IOException or UriFormatException or InvalidOperationException or NotSupportedException)
         {

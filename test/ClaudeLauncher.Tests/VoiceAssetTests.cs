@@ -44,6 +44,12 @@ public class VoiceAssetTests
         var scaled = WavAudio.Scale(wav, 0.25);
         Assert.NotSame(wav, scaled);
         Assert.Equal(wav.Length, scaled.Length);
+
+        // Streaming encoder headers declare uint.MaxValue. In-memory playback fails on those
+        // lengths even though file-backed readers can play the same asset.
+        using var playback = new NAudio.Wave.WaveFileReader(new MemoryStream(WavAudio.NormalizeLengths(wav)));
+        Assert.InRange(playback.Length, 1L, wav.Length);
+        Assert.InRange(playback.TotalTime.TotalSeconds, 0.1, 30);
     }
 
     [Theory]

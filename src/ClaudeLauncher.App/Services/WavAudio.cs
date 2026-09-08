@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.IO;
 using System.Text;
 
 namespace ClaudeLauncher.App.Services;
@@ -16,6 +17,18 @@ public static class WavAudio
     private const int DefaultSampleRate = 44100;
     private const ushort PcmFormatTag = 1;
     private const ushort Bits16 = 16;
+
+    /// <summary>Finalizes streaming PCM WAV headers whose RIFF/data sizes are placeholders.
+    /// Memory-backed playback readers require the actual lengths, not uint.MaxValue.</summary>
+    public static byte[] NormalizeLengths(byte[] wav)
+    {
+        if (!TryLocateData(wav, out var offset, out var length))
+            throw new InvalidDataException("音声ファイルが有効な16-bit PCM WAVではありません。");
+        var normalized = (byte[])wav.Clone();
+        BinaryPrimitives.WriteUInt32LittleEndian(normalized.AsSpan(4, 4), (uint)(wav.Length - 8));
+        BinaryPrimitives.WriteUInt32LittleEndian(normalized.AsSpan(offset - 4, 4), (uint)length);
+        return normalized;
+    }
 
     /// <summary>Returns <paramref name="wav"/> with every 16-bit PCM sample multiplied by
     /// <paramref name="volume"/>, clipped to the 16-bit range. <paramref name="volume"/> is a linear
