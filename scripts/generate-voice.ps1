@@ -48,6 +48,8 @@ $phrases = [ordered]@{
     'waiting-for-reset' = '両方の利用上限に達しました。リセットまでお待ちください。'
     'awaiting-approval' = '承認をお待ちしております。'
     'resume-failed'     = '自動再開に失敗いたしました。ご確認をお願いいたします。'
+    # 1 ターン終わるたびに鳴るので、他より短く切ってある。
+    'turn-complete'     = '作業が完了いたしました。'
 }
 
 $outputDirectory = Join-Path $PSScriptRoot '..\src\ClaudeLauncher.App\Assets\Voice'

@@ -36,6 +36,9 @@ public class StatusMarkerStoreTests
             var marker = Assert.Single(results);
             Assert.Equal(@"D:\Dev\Sample", marker.Cwd);
             Assert.Equal("permission_prompt", marker.Reason);
+            // The hook doesn't repeat the session id inside the JSON - the file name is it, and
+            // AgentEventNotifier needs it to tell a repeat sighting from a new event.
+            Assert.Equal("session1", marker.SessionId);
         }
         finally
         {

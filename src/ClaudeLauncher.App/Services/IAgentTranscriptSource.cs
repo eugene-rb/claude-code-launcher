@@ -31,6 +31,17 @@ public interface IAgentTranscriptSource
     /// could be found.</summary>
     string? ExtractPreview(string tailText);
 
+    /// <summary>Timestamp of the most recent "the agent finished its turn" record in
+    /// <paramref name="tailText"/>, or null when this agent's transcript carries no such record.
+    ///
+    /// <para>Deliberately not <see cref="Classify"/>: an idle-looking tail is an inference about the
+    /// current state, and one that is briefly wrong mid-loop (a text-only assistant turn that is
+    /// followed by more tool calls). Fine for a badge that corrects itself two seconds later; not fine
+    /// for something spoken aloud, which can't be taken back. Only an explicit end-of-turn record the
+    /// CLI wrote itself is precise enough to announce - Codex CLI writes one, and Claude Code reports
+    /// the same event out-of-band through its Stop hook (see <see cref="StatusMarkerStore"/>).</para></summary>
+    DateTimeOffset? TryDetectTurnComplete(string tailText);
+
     /// <summary>Parses one transcript line for a usage-limit event, returning its reset time. Always
     /// null for agents with <see cref="SupportsUsageLimitAutoResume"/> false.</summary>
     DateTimeOffset? TryParseUsageLimitEvent(string jsonlLine);

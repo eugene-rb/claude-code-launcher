@@ -39,6 +39,12 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool voiceNotificationEnabled = true;
 
+    /// <summary>Whether a finished turn is announced as well. Separate from
+    /// <see cref="VoiceNotificationEnabled"/> because it is the one cue that fires during ordinary
+    /// attended work - see <see cref="AppSettings.VoiceTurnCompleteEnabled"/>.</summary>
+    [ObservableProperty]
+    private bool voiceTurnCompleteEnabled = true;
+
     /// <summary>Volume as the slider shows it, 0-100. Stored as 0.0-1.0 in
     /// <see cref="AppSettings.VoiceNotificationVolume"/>; kept as a percentage here because a WPF
     /// Slider bound to a 0-1 range with a whole-number TickFrequency is awkward to configure.</summary>
@@ -116,6 +122,7 @@ public partial class SettingsViewModel : ObservableObject
         AutoResumeOnLimitEnabled = settings.AutoResumeOnLimitEnabled;
         CrossAgentHandoffEnabled = settings.CrossAgentHandoffEnabled;
         VoiceNotificationEnabled = settings.VoiceNotificationEnabled;
+        VoiceTurnCompleteEnabled = settings.VoiceTurnCompleteEnabled;
         VoiceNotificationVolumePercent = Math.Clamp(settings.VoiceNotificationVolume, 0, 1) * 100;
         ApplyVoiceSettings();
         ResumeMode = settings.ResumeMode;
@@ -149,6 +156,12 @@ public partial class SettingsViewModel : ObservableObject
         Persist();
     }
 
+    partial void OnVoiceTurnCompleteEnabledChanged(bool value)
+    {
+        ApplyVoiceSettings();
+        Persist();
+    }
+
     partial void OnVoiceNotificationVolumePercentChanged(double value)
     {
         ApplyVoiceSettings();
@@ -158,6 +171,7 @@ public partial class SettingsViewModel : ObservableObject
     private void ApplyVoiceSettings()
     {
         Voice.Enabled = VoiceNotificationEnabled;
+        Voice.TurnCompleteEnabled = VoiceTurnCompleteEnabled;
         Voice.Volume = Math.Clamp(VoiceNotificationVolumePercent / 100.0, 0, 1);
     }
 
@@ -249,6 +263,7 @@ public partial class SettingsViewModel : ObservableObject
             AutoResumeOnLimitEnabled = AutoResumeOnLimitEnabled,
             CrossAgentHandoffEnabled = CrossAgentHandoffEnabled,
             VoiceNotificationEnabled = VoiceNotificationEnabled,
+            VoiceTurnCompleteEnabled = VoiceTurnCompleteEnabled,
             VoiceNotificationVolume = Math.Clamp(VoiceNotificationVolumePercent / 100.0, 0, 1),
             ResumeMode = ResumeMode,
             UsageStatusLineBridgeEnabled = UsageStatusLineBridgeEnabled,

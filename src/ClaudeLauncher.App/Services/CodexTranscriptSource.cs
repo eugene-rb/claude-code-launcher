@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using ClaudeLauncher.App.Models;
@@ -36,6 +37,66 @@ public sealed class CodexTranscriptSource(string? sessionsRootOverride = null) :
 
     public DateTimeOffset? TryParseUsageLimitEvent(string jsonlLine) =>
         CodexRateLimitParser.TryParseReachedReset(jsonlLine);
+
+    /// <summary>Finds the newest <c>event_msg</c>/<c>task_complete</c> record in the tail. Unlike the
+    /// rest of this class - whose file layout is read off Codex's documentation - this record was
+    /// confirmed in a real rollout: Codex writes exactly one per turn, carrying the turn id and the
+    /// agent's last message, right after the final assistant message. That makes it the Codex
+    /// counterpart of Claude Code's Stop hook, and the reason Codex gets the same end-of-turn
+    /// announcement without the launcher having to claim <c>notify</c> in ~/.codex/config.toml (a
+    /// single-program slot, commonly already taken - on this machine, by Codex's own desktop
+    /// integration).</summary>
+    public DateTimeOffset? TryDetectTurnComplete(string tailText)
+    {
+        DateTimeOffset? newest = null;
+        foreach (var rawLine in tailText.Split('\n'))
+        {
+            // Cheap reject first: the tail is up to a few hundred KB and all but one line per turn is
+            // something else, so full JSON parsing is reserved for lines that mention the record.
+            if (!rawLine.Contains("\"task_complete\"", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var at = TryParseTaskCompleteTimestamp(rawLine.Trim());
+            if (at is not null && (newest is null || at > newest))
+            {
+                newest = at;
+            }
+        }
+
+        return newest;
+    }
+
+    private static DateTimeOffset? TryParseTaskCompleteTimestamp(string jsonlLine)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonlLine);
+            var root = doc.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String
+                || typeEl.GetString() != "event_msg"
+                || !root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object
+                || !payload.TryGetProperty("type", out var payloadTypeEl) || payloadTypeEl.ValueKind != JsonValueKind.String
+                || payloadTypeEl.GetString() != "task_complete"
+                || !root.TryGetProperty("timestamp", out var timestampEl) || timestampEl.ValueKind != JsonValueKind.String
+                || !DateTimeOffset.TryParse(timestampEl.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind, out var completedAt))
+            {
+                return null;
+            }
+
+            return completedAt;
+        }
+        catch (JsonException)
+        {
+            // Includes the tail's first line, which may start mid-record - skipped like any other
+            // unreadable line rather than treated as an absent turn.
+            return null;
+        }
+    }
 
     /// <summary>Walks day-folders newest-first, bounded by <see cref="MaxDaysToScan"/> and
     /// <see cref="MaxFilesToScan"/> so a machine with years of history doesn't stall the dashboard's

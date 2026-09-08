@@ -44,12 +44,21 @@ public sealed class AppSettings
     /// <see cref="Services.ClaudeStatusLineInstaller"/>.</summary>
     public bool UsageStatusLineBridgeEnabled { get; set; }
 
-    /// <summary>When true, the launcher speaks an announcement at each unattended milestone (a limit
-    /// was detected, the task moved to the other CLI, it was picked back up, both accounts ran out, an
-    /// automatic resume failed). Common to Claude Code and Codex, with one honest exception: the
-    /// "awaiting approval" cue comes from a Claude Code-only hook (see
-    /// <see cref="Services.StatusMarkerStore"/>) and has no Codex equivalent.</summary>
+    /// <summary>When true, the launcher speaks an announcement at each milestone: a limit was detected,
+    /// the task moved to the other CLI, it was picked back up, both accounts ran out, an automatic
+    /// resume failed, a turn finished, a session is waiting on the user. Common to Claude Code and
+    /// Codex, with one honest exception: the "awaiting approval" cue comes from a Claude Code-only hook
+    /// (see <see cref="Services.StatusMarkerStore"/>) and has no Codex equivalent.
+    /// <para>This is the launcher's only voice. The Claude Code hook that used to play its own sounds
+    /// was retired in favour of it, so nothing announces anything while the launcher isn't running.</para></summary>
     public bool VoiceNotificationEnabled { get; set; } = true;
+
+    /// <summary>When true (and <see cref="VoiceNotificationEnabled"/> is on), a finished turn is
+    /// announced too. Split out from the rest because it is the only cue that fires during ordinary
+    /// attended work, many times an hour; the others each mark an unattended run changing state.
+    /// Defaults on, since it is what the retired Claude Code hook did and turning it off silently would
+    /// read as the notifications having broken.</summary>
+    public bool VoiceTurnCompleteEnabled { get; set; } = true;
 
     /// <summary>Announcement volume, 0.0-1.0. Applied by scaling the samples (see
     /// <see cref="Services.WavAudio.Scale"/>), so it is the launcher's own level and independent of

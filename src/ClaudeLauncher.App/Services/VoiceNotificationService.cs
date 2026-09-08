@@ -26,9 +26,18 @@ public enum VoiceCue
     /// <summary>Both accounts are exhausted; the task is parked until the first reset.</summary>
     WaitingForReset,
 
-    /// <summary>A session is blocked on a permission prompt. Claude Code only - see
-    /// <see cref="StatusMarkerStore"/>; Codex has no equivalent signal to key off.</summary>
+    /// <summary>A session is blocked on the user - a permission prompt, or an AskUserQuestion/
+    /// ExitPlanMode confirmation. Claude Code only - see <see cref="StatusMarkerStore"/>; Codex has no
+    /// equivalent signal to key off.</summary>
     AwaitingApproval,
+
+    /// <summary>A session finished its turn and is waiting for the next instruction. The everyday cue,
+    /// and the only one that fires while someone is sitting at the keyboard - it replaces what the
+    /// ~/.claude/hooks/notify-sound.py hook used to play for itself, so that both CLIs announce this
+    /// through one volume control instead of Claude Code having a second, louder voice of its own.
+    /// Claude Code reports it through the Stop hook's marker; Codex through its transcript's
+    /// <c>task_complete</c> record.</summary>
+    TurnComplete,
 
     /// <summary>An automatic resume threw. This is the one cue that means the unattended run has
     /// actually stopped.</summary>
@@ -66,6 +75,14 @@ public sealed class VoiceNotificationService
     /// <summary>Master on/off, mirrored from <see cref="Models.AppSettings.VoiceNotificationEnabled"/>.</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>Whether <see cref="VoiceCue.TurnComplete"/> is wanted, mirrored from
+    /// <see cref="Models.AppSettings.VoiceTurnCompleteEnabled"/>. Separate from <see cref="Enabled"/>
+    /// because it is the one cue that fires during ordinary attended work, many times an hour, whereas
+    /// the rest only mark an unattended run changing state - someone who wants to be told about a
+    /// failover at 3am doesn't necessarily want to be told about every turn at noon. Enforced here
+    /// rather than at each call site so there is one place that decides.</summary>
+    public bool TurnCompleteEnabled { get; set; } = true;
+
     /// <summary>0.0-1.0 slider position, mirrored from
     /// <see cref="Models.AppSettings.VoiceNotificationVolume"/>. Converted to an amplitude factor via
     /// <see cref="WavAudio.PerceptualAmplitude"/> at playback.</summary>
@@ -82,7 +99,7 @@ public sealed class VoiceNotificationService
     /// handoff announcement that follows it seconds later.</summary>
     public void Play(VoiceCue cue)
     {
-        if (!Enabled || !TryClaimSlot(cue))
+        if (!Enabled || (cue == VoiceCue.TurnComplete && !TurnCompleteEnabled) || !TryClaimSlot(cue))
         {
             return;
         }
@@ -205,6 +222,7 @@ public sealed class VoiceNotificationService
         VoiceCue.AutoResume => "auto-resume.wav",
         VoiceCue.WaitingForReset => "waiting-for-reset.wav",
         VoiceCue.AwaitingApproval => "awaiting-approval.wav",
+        VoiceCue.TurnComplete => "turn-complete.wav",
         VoiceCue.ResumeFailed => "resume-failed.wav",
         _ => "auto-resume.wav",
     };

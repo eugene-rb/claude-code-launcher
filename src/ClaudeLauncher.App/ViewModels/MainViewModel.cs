@@ -27,6 +27,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ClaudeAccountUsageTracker _usageTracker;
     private readonly CodexUsageSnapshotReader _codexUsageReader;
     private readonly AgentCooldownStore _cooldowns;
+    private readonly AgentEventNotifier _events;
     private readonly DispatcherTimer _scheduleTimer;
     private readonly DispatcherTimer _dashboardTimer;
 
@@ -93,6 +94,7 @@ public partial class MainViewModel : ObservableObject
         _cooldowns = new AgentCooldownStore();
         Update = new UpdateViewModel();
         Settings = new SettingsViewModel(new AppSettingsStore(), new StartupRegistrationService(), Update);
+        _events = new AgentEventNotifier(Settings.Voice.Play);
 
         foreach (var profile in _store.Load())
         {
@@ -120,6 +122,10 @@ public partial class MainViewModel : ObservableObject
     private void RefreshDashboard()
     {
         var markers = StatusMarkerStore.ReadFresh(StatusMarkerStore.GetDefaultDirectory(), StatusMarkerStore.DefaultMaxAge, DateTimeOffset.Now);
+
+        // Announce first, and from the whole marker set rather than per project: these are the
+        // machine's Claude Code sessions, not only the ones registered as projects here.
+        _events.Observe(markers);
 
         foreach (var session in Sessions)
         {

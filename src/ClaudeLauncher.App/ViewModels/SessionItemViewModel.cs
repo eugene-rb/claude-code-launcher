@@ -39,11 +39,14 @@ public partial class SessionItemViewModel : ObservableObject
     private AgentKind _activeAgentKind;
     private Process? _process;
 
-    /// <summary>Previous <see cref="ActivityState"/>, so the "awaiting approval" announcement fires on
-    /// the transition into that state instead of on the state itself. <see cref="RefreshActivityState"/>
-    /// runs every two seconds for every project; keying the cue off the current value alone would
-    /// speak over the user every two seconds for as long as the prompt stayed unanswered.</summary>
-    private ProjectActivityState _previousActivityState = ProjectActivityState.Unknown;
+    /// <summary>Timestamp of the last end-of-turn record seen in this project's transcript, so the
+    /// announcement fires once per turn rather than on every two-second poll that still sees the same
+    /// record. Null until the first one is seen - and that first sighting only seeds this, because the
+    /// record it finds is whatever the project happened to be left in, not something that just
+    /// happened. Moving backwards (a different session file becoming the newest for this project)
+    /// re-seeds for the same reason. Only Codex CLI reaches this; Claude Code's end-of-turn arrives as
+    /// a hook marker and is announced by <see cref="AgentEventNotifier"/>.</summary>
+    private DateTimeOffset? _lastTurnCompleteAt;
 
     public SessionProfile Profile { get; private set; }
 
@@ -403,24 +406,27 @@ public partial class SessionItemViewModel : ObservableObject
     /// <see cref="IsRunning"/> process to key off of, so liveness itself has to come from the
     /// transcript). <paramref name="freshMarkers"/> is the full, already-staleness-filtered set of
     /// "awaiting approval" markers for this poll — passed in rather than read here so
-    /// <see cref="MainViewModel"/> reads the marker directory once per tick, not once per project.</summary>
+    /// <see cref="MainViewModel"/> reads the marker directory once per tick, not once per project.
+    /// Announcing those markers is <see cref="AgentEventNotifier"/>'s job, not this method's - they are
+    /// read here only for the badge.</summary>
     public void RefreshActivityState(IReadOnlyList<StatusMarker> freshMarkers)
     {
         var sourceKind = IsRunning ? _activeAgentKind : Profile.AgentKind;
         var source = AgentTranscriptSourceRegistry.Get(sourceKind);
         var file = source.FindMostRecentTranscriptFile(Profile.WorkingDirectory);
 
-        // The "awaiting your approval" marker comes from a Claude Code-only hook, so it's only ever
-        // meaningful for a Claude Code project - other agents have no equivalent hook to write one.
-        var hasFreshMarker = sourceKind == AgentKind.ClaudeCode
-            && freshMarkers.Any(m => WorkingDirectoryComparer.AreSame(m.Cwd, Profile.WorkingDirectory));
+        // The hook that writes markers is Claude Code-only, so they're only ever meaningful for a
+        // Claude Code project. Only the two "blocked on the user" reasons belong on the badge: the
+        // hook also writes a marker when a turn simply ends, and that is idle, not awaiting anything.
+        var isBlockedOnUser = sourceKind == AgentKind.ClaudeCode
+            && freshMarkers.Any(m => m.IsBlockedOnUser && WorkingDirectoryComparer.AreSame(m.Cwd, Profile.WorkingDirectory));
 
         if (file is null)
         {
             // No transcript at all - "awaiting approval" still wins if the marker says so (the hook
             // that writes it doesn't depend on the transcript existing), but there's nothing to preview.
             PreviewText = null;
-            SetActivityState(hasFreshMarker ? ProjectActivityState.AwaitingApproval : ProjectActivityState.Unknown);
+            ActivityState = isBlockedOnUser ? ProjectActivityState.AwaitingApproval : ProjectActivityState.Unknown;
             return;
         }
 
@@ -431,39 +437,49 @@ public partial class SessionItemViewModel : ObservableObject
             // Showing "待機" (or a stale preview) forever for a project nobody has touched in days
             // would be misleading, so both are cleared rather than left showing the last exchange.
             PreviewText = null;
-            SetActivityState(hasFreshMarker ? ProjectActivityState.AwaitingApproval : ProjectActivityState.Unknown);
+            ActivityState = isBlockedOnUser ? ProjectActivityState.AwaitingApproval : ProjectActivityState.Unknown;
             return;
         }
 
-        // Read once and hand the same text to both the classifier and the preview extractor, instead
-        // of two separate tail reads of the same file every poll.
+        // Read once and hand the same text to the classifier, the preview extractor and the
+        // end-of-turn detector, instead of three separate tail reads of the same file every poll.
         var text = TranscriptTailFile.ReadTail(file);
         PreviewText = text is null ? null : source.ExtractPreview(text);
 
-        if (hasFreshMarker)
+        if (text is not null)
+        {
+            AnnounceTurnComplete(source.TryDetectTurnComplete(text));
+        }
+
+        if (isBlockedOnUser)
         {
             // Precedence: awaiting approval always wins, even over a transcript that looks idle (the
             // permission prompt itself isn't written to the transcript, so the two signals can't
             // disagree in a way that should be resolved any other way).
-            SetActivityState(ProjectActivityState.AwaitingApproval);
+            ActivityState = ProjectActivityState.AwaitingApproval;
             return;
         }
 
-        SetActivityState((text is null ? null : source.Classify(text)) ?? ProjectActivityState.Unknown);
+        ActivityState = (text is null ? null : source.Classify(text)) ?? ProjectActivityState.Unknown;
     }
 
-    /// <summary>Assigns <see cref="ActivityState"/> and announces a newly-blocked session. The cue is
-    /// tied to the transition, not the state: this runs on the 2-second dashboard tick, so announcing
-    /// the state itself would repeat every two seconds until the prompt was answered.</summary>
-    private void SetActivityState(ProjectActivityState state)
+    /// <summary>Speaks the end-of-turn cue when <paramref name="completedAt"/> is a turn that finished
+    /// since the last poll. See <see cref="_lastTurnCompleteAt"/> for why the first sighting - and a
+    /// timestamp that moves backwards - only re-seed instead of announcing.</summary>
+    private void AnnounceTurnComplete(DateTimeOffset? completedAt)
     {
-        if (state == ProjectActivityState.AwaitingApproval && _previousActivityState != ProjectActivityState.AwaitingApproval)
+        if (completedAt is not { } at)
         {
-            _voice.Play(VoiceCue.AwaitingApproval);
+            return;
         }
 
-        _previousActivityState = state;
-        ActivityState = state;
+        var previous = _lastTurnCompleteAt;
+        _lastTurnCompleteAt = at;
+
+        if (previous is { } last && at > last)
+        {
+            _voice.Play(VoiceCue.TurnComplete);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]

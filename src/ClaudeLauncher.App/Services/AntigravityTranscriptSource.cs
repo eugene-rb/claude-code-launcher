@@ -39,6 +39,9 @@ public sealed class AntigravityTranscriptSource(string? conversationsRootOverrid
 
     public DateTimeOffset? TryParseUsageLimitEvent(string jsonlLine) => null;
 
+    /// <summary>Always null: no end-of-turn record is known for this CLI's log format.</summary>
+    public DateTimeOffset? TryDetectTurnComplete(string tailText) => null;
+
     private string? FindTranscriptFile(string workingDirectory, DateTimeOffset? notBefore)
     {
         if (!Directory.Exists(_conversationsRoot))

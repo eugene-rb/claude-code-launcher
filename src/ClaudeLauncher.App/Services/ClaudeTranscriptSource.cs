@@ -31,4 +31,9 @@ public sealed class ClaudeTranscriptSource(string? projectsRootOverride = null) 
     public string? ExtractPreview(string tailText) => TranscriptPreviewReader.ExtractPreview(tailText);
 
     public DateTimeOffset? TryParseUsageLimitEvent(string jsonlLine) => UsageLimitEventParser.TryParseLine(jsonlLine);
+
+    /// <summary>Always null: Claude Code's transcript has no end-of-turn record. The Stop hook writes a
+    /// <see cref="Models.StatusMarker.TurnCompleteReason"/> marker instead, which
+    /// <see cref="AgentEventNotifier"/> announces.</summary>
+    public DateTimeOffset? TryDetectTurnComplete(string tailText) => null;
 }

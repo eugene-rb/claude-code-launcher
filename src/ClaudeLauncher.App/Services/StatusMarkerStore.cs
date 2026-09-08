@@ -4,11 +4,12 @@ using ClaudeLauncher.App.Models;
 
 namespace ClaudeLauncher.App.Services;
 
-/// <summary>Reads the "awaiting your approval" marker files written by the
-/// ~/.claude/hooks/write-status-marker.py hook (one file per Claude Code session_id, under
-/// %APPDATA%\ClaudeLauncher\status). A permission prompt or an AskUserQuestion/ExitPlanMode
-/// confirmation is never written to the transcript itself, so this is the only reliable signal for
-/// that state - the transcript-based <see cref="TranscriptActivityClassifier"/> can't see it.</summary>
+/// <summary>Reads the session-state marker files written by the ~/.claude/hooks/write-status-marker.py
+/// hook (one file per Claude Code session_id, under %APPDATA%\ClaudeLauncher\status). A permission
+/// prompt, an AskUserQuestion/ExitPlanMode confirmation, and the end of a turn are none of them written
+/// to the transcript itself, so this is the only reliable signal for those states - the
+/// transcript-based <see cref="TranscriptActivityClassifier"/> can't see any of them (see
+/// <see cref="StatusMarker"/> for the reasons the hook writes).</summary>
 public static class StatusMarkerStore
 {
     /// <summary>Mirrors ScheduleEvaluator's staleness windows: generous enough to never cut off a
@@ -66,7 +67,10 @@ public static class StatusMarkerStore
                 return null;
             }
 
-            return new StatusMarker(cwd, reasonEl.GetString()!, updatedAt);
+            // The file name is the session id the hook wrote the marker for - the hook doesn't repeat
+            // it inside the JSON, and callers need it to tell repeat sightings of one event from a new
+            // event in the same session.
+            return new StatusMarker(Path.GetFileNameWithoutExtension(path), cwd, reasonEl.GetString()!, updatedAt);
         }
         catch (JsonException)
         {

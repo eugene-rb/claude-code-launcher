@@ -32,6 +32,9 @@ public sealed class KimiTranscriptSource(string? homeOverride = null) : IAgentTr
 
     public DateTimeOffset? TryParseUsageLimitEvent(string jsonlLine) => null;
 
+    /// <summary>Always null: no end-of-turn record is known for this CLI's log format.</summary>
+    public DateTimeOffset? TryDetectTurnComplete(string tailText) => null;
+
     private string? FindTranscriptFile(string workingDirectory, DateTimeOffset? notBefore)
     {
         var indexPath = Path.Combine(_home, "session_index.jsonl");

@@ -78,4 +78,59 @@ public class CodexTranscriptSourceTests
 
         Assert.Null(new CodexTranscriptSource().TryParseUsageLimitEvent(line));
     }
+
+    /// <summary>Shapes taken from a real rollout file (~/.codex/sessions/2026/09/08/rollout-*.jsonl):
+    /// one task_complete event_msg per turn, right after the final assistant message. This is Codex's
+    /// answer to Claude Code's Stop hook and the reason the end-of-turn announcement covers both CLIs.</summary>
+    private const string TaskCompleteLine =
+        """{"timestamp":"2026-09-08T11:29:16.371Z","ordinal":452,"type":"event_msg","payload":{"type":"task_complete","turn_id":"01a080bb-f275-7191-b29b-b1be874e1224","last_agent_message":"done"}}""";
+
+    private const string EarlierTaskCompleteLine =
+        """{"timestamp":"2026-09-08T10:02:03.000Z","ordinal":120,"type":"event_msg","payload":{"type":"task_complete","turn_id":"01a08000-0000-0000-0000-000000000000","last_agent_message":"earlier"}}""";
+
+    private const string TokenCountLine =
+        """{"timestamp":"2026-09-08T11:29:16.351Z","ordinal":451,"type":"event_msg","payload":{"type":"token_count","info":{}}}""";
+
+    [Fact]
+    public void TryDetectTurnComplete_ReturnsTheRecordsOwnTimestamp()
+    {
+        var tail = string.Join(Environment.NewLine, TokenCountLine, TaskCompleteLine);
+
+        Assert.Equal(
+            DateTimeOffset.Parse("2026-09-08T11:29:16.371Z", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind),
+            new CodexTranscriptSource().TryDetectTurnComplete(tail));
+    }
+
+    [Fact]
+    public void TryDetectTurnComplete_MultipleTurnsInTheTail_ReturnsTheNewest()
+    {
+        // Order matters: the caller announces on a forward move, so returning an older turn from a
+        // tail that also contains a newer one would go silent for the rest of the session.
+        var tail = string.Join(Environment.NewLine, TaskCompleteLine, EarlierTaskCompleteLine);
+
+        Assert.Equal(
+            DateTimeOffset.Parse("2026-09-08T11:29:16.371Z", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind),
+            new CodexTranscriptSource().TryDetectTurnComplete(tail));
+    }
+
+    [Fact]
+    public void TryDetectTurnComplete_TailWithoutOne_ReturnsNull()
+    {
+        Assert.Null(new CodexTranscriptSource().TryDetectTurnComplete(TokenCountLine));
+    }
+
+    [Fact]
+    public void TryDetectTurnComplete_TruncatedFirstLine_IsSkippedNotThrown()
+    {
+        // A tail read starts at an arbitrary byte offset, so its first line is routinely half a record
+        // - and half a task_complete record still contains the string being pre-filtered on.
+        var tail = string.Join(Environment.NewLine, """sg","payload":{"type":"task_complete","turn_id":"x"}}""", TaskCompleteLine);
+
+        Assert.Equal(
+            DateTimeOffset.Parse("2026-09-08T11:29:16.371Z", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind),
+            new CodexTranscriptSource().TryDetectTurnComplete(tail));
+    }
 }
