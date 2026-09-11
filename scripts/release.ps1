@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Publishes ClaudeLauncher.App, packs it into a Velopack installer, and optionally uploads the
+    Publishes Smooth-Coder.App, packs it into a Velopack installer, and optionally uploads the
     release to GitHub Releases (eugene-rb/claude-code-launcher).
 
 .PARAMETER Version
-    Release version, e.g. "0.2.0". Must match <Version> in ClaudeLauncher.App.csproj.
+    Release version, e.g. "0.2.0". Must match <Version> in Smooth-Coder.App.csproj.
 
 .PARAMETER Upload
     Also upload the packed release to GitHub via `vpk upload github`. Requires $env:GITHUB_TOKEN
@@ -28,8 +28,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$appProject = Join-Path $repoRoot 'src\ClaudeLauncher.App\ClaudeLauncher.App.csproj'
-$iconPath = Join-Path $repoRoot 'src\ClaudeLauncher.App\Assets\app.ico'
+$appProject = Join-Path $repoRoot 'src\Smooth-Coder.App\Smooth-Coder.App.csproj'
+$iconPath = Join-Path $repoRoot 'src\Smooth-Coder.App\Assets\app.ico'
 $publishDir = Join-Path $repoRoot 'publish\win-x64'
 $releasesDir = Join-Path $repoRoot 'Releases'
 $repoUrl = 'https://github.com/eugene-rb/claude-code-launcher'
@@ -48,10 +48,10 @@ if (-not $SkipPublish) {
 # version number. Confirmed as the root cause of the 0.3.0 release (2026-08-24): sq.version said
 # 0.3.0 but the packaged DLL was still 0.2.1, so installed clients believed they were already
 # up to date and never re-checked.
-$publishedDllPath = Join-Path $publishDir 'ClaudeLauncher.App.dll'
+$publishedDllPath = Join-Path $publishDir 'Smooth-Coder.App.dll'
 $publishedDllVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($publishedDllPath).FileVersion
 if (-not $publishedDllVersion.StartsWith($Version)) {
-    throw "publish\win-x64 is stale: ClaudeLauncher.App.dll is v$publishedDllVersion but packing v$Version. Re-run without -SkipPublish."
+    throw "publish\win-x64 is stale: Smooth-Coder.App.dll is v$publishedDllVersion but packing v$Version. Re-run without -SkipPublish."
 }
 
 # --packTitle is kept ASCII-only: passing Japanese text through PowerShell 5.1 to a native exe's argv
@@ -60,11 +60,11 @@ if (-not $publishedDllVersion.StartsWith($Version)) {
 # throughout regardless of this.
 Write-Host "==> vpk pack"
 vpk pack `
-    --packId ClaudeCodeLauncher `
+    --packId Smooth-Coder `
     --packVersion $Version `
     --packDir $publishDir `
-    --mainExe ClaudeLauncher.App.exe `
-    --packTitle "Claude Code Launcher" `
+    --mainExe Smooth-Coder.App.exe `
+    --packTitle "Smooth-Coder" `
     --icon $iconPath `
     --outputDir $releasesDir
 if ($LASTEXITCODE -ne 0) { throw "vpk pack failed" }

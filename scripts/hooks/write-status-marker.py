@@ -1,6 +1,6 @@
 """Claude Code のセッション状態を、ランチャーが読めるマーカーファイルとして書き出すフック。
 
-ランチャー (ClaudeLauncher.App) は音声通知とダッシュボードのバッジのために「いま Claude Code が
+ランチャー (SmoothCoder.App) は音声通知とダッシュボードのバッジのために「いま Claude Code が
 何をしているか」を知る必要があるが、次の 3 つはどれもトランスクリプト (~/.claude/projects/**.jsonl)
 に書かれない。外から観測できるのはフックだけである。
 
@@ -8,7 +8,7 @@
   ask_or_plan        AskUserQuestion / ExitPlanMode の確認で停止している
   turn_complete      1 ターンが終わり、次の指示を待っている
 
-出力先は %APPDATA%\\ClaudeLauncher\\status\\<session_id>.json。1 セッション 1 ファイルで、ファイル名
+出力先は %APPDATA%\\Smooth-Coder\\status\\<session_id>.json。1 セッション 1 ファイルで、ファイル名
 そのものがセッション ID である（ランチャー側は「同じ出来事をもう一度見た」のか「同じセッションの
 新しい出来事」なのかを、これと updatedAt で判別する）。
 
@@ -37,7 +37,7 @@ import sys
 
 def status_dir():
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
-    return pathlib.Path(base) / "ClaudeLauncher" / "status"
+    return pathlib.Path(base) / "Smooth-Coder" / "status"
 
 
 def main():

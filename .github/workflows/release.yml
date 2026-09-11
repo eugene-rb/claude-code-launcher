@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version matching ClaudeLauncher.App.csproj (for example 0.6.0)
+        description: Version matching Smooth-Coder.App.csproj (for example 0.6.0)
         required: true
         type: string
 
@@ -36,7 +36,7 @@ jobs:
           } else {
             '${{ github.ref_name }}'.TrimStart('v')
           }
-          $project = [xml](Get-Content 'src/ClaudeLauncher.App/ClaudeLauncher.App.csproj')
+          $project = [xml](Get-Content 'src/Smooth-Coder.App/Smooth-Coder.App.csproj')
           $projectVersion = [string]$project.Project.PropertyGroup.Version
           if ($requested -ne $projectVersion) {
             throw "Release version $requested does not match project version $projectVersion."
@@ -46,8 +46,8 @@ jobs:
       - name: Restore and test
         shell: pwsh
         run: |
-          dotnet restore ClaudeLauncher.slnx
-          dotnet test ClaudeLauncher.slnx -c Release --no-restore
+          dotnet restore Smooth-Coder.slnx
+          dotnet test Smooth-Coder.slnx -c Release --no-restore
 
       - name: Install Velopack CLI
         shell: pwsh

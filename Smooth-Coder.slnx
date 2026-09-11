@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Smooth-Coder.App/Smooth-Coder.App.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Smooth-Coder.Tests/Smooth-Coder.Tests.csproj" />
+  </Folder>
+</Solution>

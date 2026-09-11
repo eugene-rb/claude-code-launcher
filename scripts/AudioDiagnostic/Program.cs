@@ -8,16 +8,16 @@ internal static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        var directory = args.Length > 0 ? Path.GetFullPath(args[0]) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClaudeCodeLauncher", "current");
+        var directory = args.Length > 0 ? Path.GetFullPath(args[0]) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Smooth-Coder", "current");
         AssemblyLoadContext.Default.Resolving += (_, name) =>
         {
             var path = Path.Combine(directory, name.Name + ".dll");
             return File.Exists(path) ? AssemblyLoadContext.Default.LoadFromAssemblyPath(path) : null;
         };
-        var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(directory, "ClaudeLauncher.App.dll"));
+        var assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(directory, "Smooth-Coder.App.dll"));
         Console.WriteLine($"Installed assembly: {assembly.FullName}");
         var application = new Application();
-        var type = assembly.GetType("ClaudeLauncher.App.Services.VoiceNotificationService", true)!;
+        var type = assembly.GetType("SmoothCoder.App.Services.VoiceNotificationService", true)!;
         var service = Activator.CreateInstance(type, new object[] { null })!;
         type.GetProperty("Volume")!.SetValue(service, 1.0);
         type.GetMethod("PlayTest")!.Invoke(service, new object[] { Type.Missing });

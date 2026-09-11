@@ -1,6 +1,6 @@
-﻿<#
+<#
 .SYNOPSIS
-    ランチャーの音声通知アセット (src/ClaudeLauncher.App/Assets/Voice/*.wav) を生成する。
+    ランチャーの音声通知アセット (src/Smooth-Coder.App/Assets/Voice/*.wav) を生成する。
 
 .DESCRIPTION
     Aivis Cloud API (https://api.aivis-project.com/v1/tts/synthesize) で秘書口調のアナウンス音声を
@@ -52,7 +52,7 @@ $phrases = [ordered]@{
     'turn-complete'     = '作業が完了いたしました。'
 }
 
-$outputDirectory = Join-Path $PSScriptRoot '..\src\ClaudeLauncher.App\Assets\Voice'
+$outputDirectory = Join-Path $PSScriptRoot '..\src\Smooth-Coder.App\Assets\Voice'
 if (-not (Test-Path $outputDirectory)) {
     New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 }
