@@ -159,7 +159,11 @@ public partial class MainViewModel : ObservableObject
             {
                 anyFired = true;
             }
+        }
 
+        // Collect every project's limits before executing any pending handoff.
+        foreach (var session in Sessions)
+        {
             if (session.TryFireAutoResume(now))
             {
                 anyFired = true;

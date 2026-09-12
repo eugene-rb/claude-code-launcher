@@ -145,7 +145,7 @@ public partial class SessionItemViewModel : ObservableObject
         agentDisplayName = AgentCatalog.Get(profile.AgentKind).DisplayName;
         customLaunchAgentKind = profile.AgentKind;
         customLaunchArguments = settings.GetArguments(profile.AgentKind);
-        _activeAgentKind = profile.AgentKind;
+        _activeAgentKind = profile.LastUsedAgentKind ?? profile.AgentKind;
         RefreshScheduleSummary();
         RefreshLimitStatusSummary();
         RefreshActivityState(StatusMarkerStore.ReadFresh(StatusMarkerStore.GetDefaultDirectory(), StatusMarkerStore.DefaultMaxAge, DateTimeOffset.Now));
@@ -225,6 +225,10 @@ public partial class SessionItemViewModel : ObservableObject
 
         var now = DateTimeOffset.Now;
 
+        // Check the reported reset before Plan turns it into a fresh handoff deadline.
+        if (!ScheduleEvaluator.ShouldArmAutoResume(at + HandoffPlanner.ResumeGrace, now))
+            return false;
+
         // Record the limit account-wide before deciding anything: every other project's failover, and
         // this one's next hop back, depends on knowing this agent is spent.
         _cooldowns.Set(_activeAgentKind, at, now);
@@ -235,7 +239,7 @@ public partial class SessionItemViewModel : ObservableObject
 
         var plan = HandoffPlanner.Plan(
             _activeAgentKind,
-            at,
+            _cooldowns.Get(_activeAgentKind, now) ?? at,
             counterpart,
             counterpart is { } other ? _cooldowns.Get(other, now) : null,
             Profile.LastHandoffAt,
@@ -264,6 +268,13 @@ public partial class SessionItemViewModel : ObservableObject
     /// the app days later doesn't silently relaunch a session the user has moved on from.</summary>
     public bool TryFireAutoResume(DateTimeOffset now)
     {
+        if (!_settings.AutoResumeOnLimitEnabled && Profile.AutoResumeAt is not null)
+        {
+            ClearAutoResume();
+            RefreshLimitStatusSummary();
+            return true;
+        }
+
         if (ScheduleEvaluator.IsAutoResumeStale(Profile, now))
         {
             ClearAutoResume();
@@ -278,6 +289,24 @@ public partial class SessionItemViewModel : ObservableObject
 
         var sourceAgent = _activeAgentKind;
         var targetAgent = Profile.AutoResumeAgentKind ?? sourceAgent;
+        if (!_settings.CrossAgentHandoffEnabled)
+            targetAgent = sourceAgent;
+
+        var revised = HandoffPlanner.Revalidate(sourceAgent, targetAgent,
+            _cooldowns.Get(sourceAgent, now), _cooldowns.Get(targetAgent, now),
+            Profile.LastHandoffAt, now);
+        if (revised is { } plan)
+        {
+            targetAgent = plan.TargetAgent;
+            Profile.AutoResumeAt = plan.FireAt;
+            Profile.AutoResumeAgentKind = targetAgent == sourceAgent ? null : targetAgent;
+            Profile.AutoResumeIsWaitingForReset = plan.Action == FailoverAction.WaitForReset;
+            if (plan.FireAt > now)
+            {
+                RefreshLimitStatusSummary();
+                return true;
+            }
+        }
         var isHandoff = targetAgent != sourceAgent;
         try
         {
@@ -557,6 +586,8 @@ public partial class SessionItemViewModel : ObservableObject
         Profile.LastUsedAgentKind = agentKind;
         _limitWatcher = new TranscriptLimitWatcher(AgentTranscriptSourceRegistry.Get(agentKind));
         _limitWatcher.Reset(DateTimeOffset.Now);
+        ClearAutoResume();
+        RefreshLimitStatusSummary();
         ProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -578,6 +609,9 @@ public partial class SessionItemViewModel : ObservableObject
 
         _launcher.Stop(proc);
         proc.Dispose();
+        ClearAutoResume();
+        RefreshLimitStatusSummary();
+        ProfileChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private bool CanStop() => IsRunning;
@@ -601,6 +635,7 @@ public partial class SessionItemViewModel : ObservableObject
             // while this run is still marked active so the final transcript line is not missed
             // between the normal 20-second checks.
             TryDetectUsageLimit();
+            ProfileChanged?.Invoke(this, EventArgs.Empty);
 
             _process = null;
             IsRunning = false;

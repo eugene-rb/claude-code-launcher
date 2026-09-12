@@ -38,6 +38,24 @@ public readonly record struct FailoverPlan(FailoverAction Action, AgentKind Targ
 /// neither account can take the work the plan parks the task rather than moving it.</para></summary>
 public static class HandoffPlanner
 {
+    /// <summary>Rechecks a due launch against limits learned since it was scheduled.</summary>
+    public static FailoverPlan? Revalidate(
+        AgentKind activeAgent, AgentKind targetAgent,
+        DateTimeOffset? activeCooldown, DateTimeOffset? targetCooldown,
+        DateTimeOffset? lastHandoffAt, DateTimeOffset now)
+    {
+        if (targetCooldown is not { } reset || reset <= now)
+            return null;
+
+        if (targetAgent == activeAgent)
+            return new(FailoverAction.ResumeSameAgent, activeAgent, reset + ResumeGrace);
+
+        if (activeCooldown is not { } activeReset || activeReset <= now)
+            return new(FailoverAction.ResumeSameAgent, activeAgent, now);
+
+        return Plan(activeAgent, activeReset, targetAgent, reset, lastHandoffAt, now);
+    }
+
     /// <summary>Delay added after a reset time before relaunching, so a launch can't land fractionally
     /// before the account actually frees up (clock skew between the CLI's reported reset and this
     /// machine) and immediately re-hit the limit.</summary>

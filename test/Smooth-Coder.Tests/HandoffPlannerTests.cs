@@ -8,6 +8,40 @@ public class HandoffPlannerTests
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public void DueHandoff_TargetBecameLimited_ParksUntilFirstReset()
+    {
+        var plan = HandoffPlanner.Revalidate(AgentKind.ClaudeCode, AgentKind.CodexCli,
+            Now.AddHours(2), Now.AddHours(1), null, Now);
+        Assert.NotNull(plan);
+        Assert.Equal(FailoverAction.WaitForReset, plan.Value.Action);
+        Assert.Equal(AgentKind.CodexCli, plan.Value.TargetAgent);
+        Assert.Equal(Now.AddHours(1) + HandoffPlanner.ResumeGrace, plan.Value.FireAt);
+    }
+
+    [Fact]
+    public void DueHandoff_TargetBecameLimited_SourceFree_ResumesSource()
+    {
+        var plan = HandoffPlanner.Revalidate(AgentKind.ClaudeCode, AgentKind.CodexCli,
+            null, Now.AddHours(1), null, Now);
+        Assert.Equal(new FailoverPlan(FailoverAction.ResumeSameAgent, AgentKind.ClaudeCode, Now), plan);
+    }
+
+    [Fact]
+    public void DueResume_LongerLimitDiscovered_PostponesResume()
+    {
+        var plan = HandoffPlanner.Revalidate(AgentKind.CodexCli, AgentKind.CodexCli,
+            Now.AddDays(2), Now.AddDays(2), null, Now);
+        Assert.Equal(Now.AddDays(2) + HandoffPlanner.ResumeGrace, plan!.Value.FireAt);
+    }
+
+    [Fact]
+    public void DueHandoff_TargetStillFree_KeepsOriginalDeadline()
+    {
+        Assert.Null(HandoffPlanner.Revalidate(AgentKind.ClaudeCode, AgentKind.CodexCli,
+            Now.AddHours(1), null, null, Now));
+    }
+
+    [Fact]
     public void NoCounterpart_ResumesSameAgentAfterItsOwnReset()
     {
         var resetAt = Now.AddHours(3);
