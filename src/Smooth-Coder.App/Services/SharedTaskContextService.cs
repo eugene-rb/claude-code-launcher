@@ -28,7 +28,13 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Smooth-Coder", "shared-context");
 
-    public string Capture(string workingDirectory, AgentKind sourceAgent)
+    /// <summary><paramref name="HasContext"/> is false when neither a carried-forward original task
+    /// nor any transcript message could be found - a handoff built on this would hand the counterpart
+    /// a blank page instead of the task, which is worse than not handing off at all (see
+    /// <see cref="SessionItemViewModel.TryFireAutoResume"/>).</summary>
+    public readonly record struct CaptureResult(string Path, bool HasContext);
+
+    public CaptureResult Capture(string workingDirectory, AgentKind sourceAgent)
     {
         Directory.CreateDirectory(_root);
         var checkpointPath = GetCheckpointPath(workingDirectory);
@@ -38,7 +44,7 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
             ? []
             : ExtractMessages(ReadTranscriptExcerpts(transcriptPath));
 
-        var originalTask = CarryForwardOriginalTask(checkpointPath, messages);
+        var (originalTask, taskIdentified) = CarryForwardOriginalTask(checkpointPath, messages);
 
         var builder = new StringBuilder()
             .AppendLine("# Shared task checkpoint")
@@ -53,6 +59,11 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
             .AppendLine(OriginalTaskHeading)
             .AppendLine()
             .AppendLine(originalTask)
+            .AppendLine()
+            .AppendLine(CurrentStateHeading)
+            .AppendLine()
+            .AppendLine(messages.LastOrDefault(m => m.Role == "Assistant")?.Text
+                ?? "(直近の進捗を確認できませんでした。作業ツリーと git log / git diff から状況を復元してください。)")
             .AppendLine()
             .AppendLine(RecentConversationHeading);
 
@@ -71,13 +82,19 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
         var tempPath = checkpointPath + ".tmp";
         File.WriteAllText(tempPath, builder.ToString(), new UTF8Encoding(false));
         File.Move(tempPath, checkpointPath, overwrite: true);
-        return checkpointPath;
+        return new CaptureResult(checkpointPath, taskIdentified || messages.Count > 0);
     }
 
-    /// <summary>Returns the original request to write into this capture: the one already carried by
+    /// <summary>Heading for the section that surfaces the source agent's most recent turn on its own,
+    /// right after the goal - so the next agent sees "what was just done" at a glance instead of having
+    /// to read the full <see cref="RecentConversationHeading"/> dump to find it.</summary>
+    private const string CurrentStateHeading = "## 現状";
+
+    /// <summary>Returns the original request to write into this capture - the one already carried by
     /// the previous checkpoint if there is one, otherwise the earliest user message in the transcript
-    /// just read.</summary>
-    private static string CarryForwardOriginalTask(string checkpointPath, IReadOnlyList<CheckpointMessage> messages)
+    /// just read - and whether one was actually identified (false only for the placeholder text,
+    /// which <see cref="SessionItemViewModel.TryFireAutoResume"/> treats as "nothing to hand over").</summary>
+    private static (string Task, bool Identified) CarryForwardOriginalTask(string checkpointPath, IReadOnlyList<CheckpointMessage> messages)
     {
         string? task = null;
         try
@@ -95,11 +112,11 @@ public sealed class SharedTaskContextService(string? rootOverride = null)
         task ??= messages.FirstOrDefault(message => message.Role == "User")?.Text;
         if (string.IsNullOrWhiteSpace(task))
         {
-            return "(元の依頼を特定できませんでした。作業ツリーと git log から目的を復元してください。)";
+            return ("(元の依頼を特定できませんでした。作業ツリーと git log から目的を復元してください。)", false);
         }
 
         var trimmed = task.Trim();
-        return trimmed.Length > MaxOriginalTaskChars ? trimmed[..MaxOriginalTaskChars] + "…" : trimmed;
+        return (trimmed.Length > MaxOriginalTaskChars ? trimmed[..MaxOriginalTaskChars] + "…" : trimmed, true);
     }
 
     /// <summary>Reads the <see cref="OriginalTaskHeading"/> section out of an existing checkpoint, or

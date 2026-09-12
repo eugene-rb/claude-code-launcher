@@ -6,6 +6,26 @@ namespace SmoothCoder.Tests;
 public class SharedTaskContextServiceTests
 {
     [Fact]
+    public void Capture_NoMatchingTranscriptAndNoPriorCheckpoint_HasNoContext()
+    {
+        var checkpointRoot = Path.Combine(Path.GetTempPath(), "SmoothCoderTests_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var service = new SharedTaskContextService(checkpointRoot);
+            var workingDirectory = Path.Combine(Path.GetTempPath(), "SmoothCoderTests_NoSuchProject_" + Guid.NewGuid().ToString("N"));
+
+            var result = service.Capture(workingDirectory, AgentKind.ClaudeCode);
+
+            Assert.False(result.HasContext);
+            Assert.Contains("元の依頼を特定できませんでした", File.ReadAllText(result.Path));
+        }
+        finally
+        {
+            Directory.Delete(checkpointRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ExtractMessages_UnderstandsClaudeAndCodexShapes()
     {
         const string text = """

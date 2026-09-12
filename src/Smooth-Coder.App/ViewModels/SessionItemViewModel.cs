@@ -39,6 +39,11 @@ public partial class SessionItemViewModel : ObservableObject
     private AgentKind _activeAgentKind;
     private Process? _process;
 
+    /// <summary>Whether the current auto-resume cycle has already retried an empty checkpoint capture
+    /// once (see <see cref="TryFireAutoResume"/>). Reset whenever a fresh auto-resume is armed or
+    /// cleared, so the next limit hit gets its own single retry.</summary>
+    private bool _handoffContextRetryUsed;
+
     /// <summary>Timestamp of the last end-of-turn record seen in this project's transcript, so the
     /// announcement fires once per turn rather than on every two-second poll that still sees the same
     /// record. Null until the first one is seen - and that first sighting only seeds this, because the
@@ -255,6 +260,7 @@ public partial class SessionItemViewModel : ObservableObject
         Profile.AutoResumeAt = plan.FireAt;
         Profile.AutoResumeAgentKind = plan.TargetAgent == _activeAgentKind ? null : plan.TargetAgent;
         Profile.AutoResumeIsWaitingForReset = plan.Action == FailoverAction.WaitForReset;
+        _handoffContextRetryUsed = false;
         RefreshLimitStatusSummary();
         _voice.Play(plan.Action == FailoverAction.WaitForReset ? VoiceCue.WaitingForReset : VoiceCue.LimitDetected);
         return true;
@@ -314,7 +320,38 @@ public partial class SessionItemViewModel : ObservableObject
             if (isHandoff)
             {
                 var checkpoint = _sharedContext.Capture(Profile.WorkingDirectory, sourceAgent);
-                continuationPrompt = SharedTaskContextService.BuildContinuationPrompt(checkpoint, sourceAgent);
+                if (!checkpoint.HasContext)
+                {
+                    if (!_handoffContextRetryUsed)
+                    {
+                        // The source transcript may not have been found/flushed yet - give it one more
+                        // tick (HandoffDelay) before deciding the context truly cannot be recovered.
+                        _handoffContextRetryUsed = true;
+                        Profile.AutoResumeAt = now + HandoffPlanner.HandoffDelay;
+                        RefreshLimitStatusSummary();
+                        return true;
+                    }
+
+                    // Still nothing to hand over: a blank checkpoint would hand the counterpart a task
+                    // it knows nothing about, which is worse than waiting - fall back to waiting out
+                    // sourceAgent's own reset instead, where `-c`/`resume` reopens its native
+                    // conversation history and needs no checkpoint at all.
+                    isHandoff = false;
+                    targetAgent = sourceAgent;
+                    Profile.AutoResumeAgentKind = null;
+                    var ownReset = _cooldowns.Get(sourceAgent, now);
+                    if (ownReset is { } resetAt && resetAt > now)
+                    {
+                        Profile.AutoResumeAt = resetAt + HandoffPlanner.ResumeGrace;
+                        RefreshLimitStatusSummary();
+                        return true;
+                    }
+                    // sourceAgent's own account is already free - fall through and resume it now.
+                }
+                else
+                {
+                    continuationPrompt = SharedTaskContextService.BuildContinuationPrompt(checkpoint.Path, sourceAgent);
+                }
             }
 
             if (IsRunning)
@@ -371,6 +408,7 @@ public partial class SessionItemViewModel : ObservableObject
         Profile.AutoResumeAt = null;
         Profile.AutoResumeAgentKind = null;
         Profile.AutoResumeIsWaitingForReset = false;
+        _handoffContextRetryUsed = false;
     }
 
     /// <summary>Types "resume" into the console <see cref="ResumeNudgeDelay"/> after an auto-resume
@@ -535,7 +573,7 @@ public partial class SessionItemViewModel : ObservableObject
         // Capture before stopping, for the same reason the automatic path does: Stop kills the process
         // tree, and a CLI killed mid-write can lose the tail of the transcript being captured.
         var checkpoint = _sharedContext.Capture(Profile.WorkingDirectory, sourceAgent);
-        var prompt = SharedTaskContextService.BuildContinuationPrompt(checkpoint, sourceAgent);
+        var prompt = SharedTaskContextService.BuildContinuationPrompt(checkpoint.Path, sourceAgent);
 
         if (IsRunning)
         {
